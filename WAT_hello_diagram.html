@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WAT — "HELLO" через архитектуру</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;600&family=Playfair+Display:ital,wght@0,700;1,400&display=swap');
+
+:root {
+  --bg:#05070e; --surface:#0b0f1e; --panel:#0f1624; --border:#182030; --border2:#203048;
+  --blue:#3d7fff; --teal:#00dfb8; --amber:#ffb020; --rose:#ff3d6e; --violet:#a855f7;
+  --lime:#7dff40; --text:#bdd0ee; --muted:#3a5070; --white:#deeaff;
+  --c0:#00c9a7; --c1:#ff6b9d; --c2:#ffc53d; --c3:#69b4ff;
+  --formula:#a0d8ff;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:var(--bg); color:var(--text);
+  font-family:'IBM Plex Mono', monospace; min-height:100vh;
+}
+body::before {
+  content:''; position:fixed; inset:0;
+  background-image:radial-gradient(circle,rgba(61,127,255,.1) 1px,transparent 1px);
+  background-size:28px 28px; pointer-events:none; z-index:0;
+}
+.page { position:relative; z-index:1; max-width:1100px; margin:0 auto; padding:48px 24px 100px; }
+
+/* HEADER */
+.page-hdr { text-align:center; margin-bottom:60px; }
+.page-tag {
+  display:inline-block; font-size:9px; letter-spacing:4px; text-transform:uppercase;
+  color:var(--teal); border:1px solid rgba(0,223,184,.3); border-radius:20px;
+  padding:4px 18px; margin-bottom:18px;
+}
+.page-hdr h1 {
+  font-family:'Playfair Display',serif; font-size:clamp(28px,5vw,54px);
+  font-weight:700; color:var(--white); margin-bottom:10px;
+}
+.page-hdr h1 em { font-style:normal; color:var(--blue); }
+.page-hdr p { font-size:11px; color:var(--muted); letter-spacing:1px; }
+
+/* LAYER BLOCK */
+.layer {
+  position:relative; margin-bottom:0;
+}
+
+/* connector line */
+.connector {
+  display:flex; flex-direction:column; align-items:center;
+  padding:0; margin:0;
+}
+.conn-line {
+  width:2px; background:linear-gradient(var(--border2),var(--border2));
+  flex:1; min-height:32px;
+}
+.conn-arrow {
+  color:var(--border2); font-size:18px; line-height:1;
+}
+
+/* LAYER CARD */
+.lcard {
+  background:var(--surface); border:1px solid var(--border2);
+  border-radius:12px; overflow:hidden;
+}
+.lcard-hdr {
+  display:flex; align-items:center; gap:12px;
+  padding:14px 20px 12px; border-bottom:1px solid var(--border);
+}
+.lbadge {
+  font-size:9px; font-weight:600; letter-spacing:2px; text-transform:uppercase;
+  padding:3px 10px; border-radius:4px; white-space:nowrap;
+}
+.lname {
+  font-family:'Playfair Display',serif; font-size:17px; color:var(--white); font-weight:700;
+}
+.lformula-inline {
+  margin-left:auto; font-size:10px; color:var(--formula); white-space:nowrap;
+  padding:4px 10px; background:rgba(160,216,255,.08); border:1px solid rgba(160,216,255,.15);
+  border-radius:4px;
+}
+.lbody { padding:20px 22px; }
+
+/* FORMULA BOX */
+.fbox {
+  background:#04090f; border:1px solid var(--border2); border-radius:8px;
+  padding:12px 16px; font-size:11px; line-height:2.1; color:var(--formula);
+  margin:10px 0; white-space:pre; overflow-x:auto;
+}
+.fg{color:var(--teal)} .fb{color:var(--blue)} .fa{color:var(--amber)}
+.fv{color:var(--violet)} .fr{color:var(--rose)} .fl{color:var(--lime)}
+
+/* TOKEN DISPLAY */
+.tok-flow { display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap; }
+.tok-section { display:flex; flex-direction:column; gap:6px; }
+.tok-section-label { font-size:9px; color:var(--muted); letter-spacing:2px; text-transform:uppercase; }
+.tok-row { display:flex; gap:5px; flex-wrap:wrap; }
+
+.tok {
+  display:flex; flex-direction:column; align-items:center; gap:3px; flex-shrink:0;
+}
+.tok-box {
+  width:44px; height:44px; border-radius:7px; border:1px solid transparent;
+  display:flex; align-items:center; justify-content:center;
+  font-size:12px; font-weight:600; transition:all .2s;
+}
+.tok-box.wide { width:52px; }
+.tok-box.big  { width:54px; height:54px; font-size:14px; border-radius:9px; }
+.tok-sub { font-size:9px; color:var(--muted); text-align:center; }
+.tok-sub2 { font-size:8px; color:var(--border2); text-align:center; }
+
+/* token palette */
+.t-raw  { background:#08101e; border-color:#18283a; color:#4a6888; }
+.t-emb  { background:#0c1828; border-color:rgba(61,127,255,.4); color:rgba(61,127,255,.9); }
+.t-pos  { background:#100a24; border-color:rgba(168,85,247,.4); color:rgba(168,85,247,.9); }
+.t-sum  { background:#0c1e28; border-color:var(--teal); color:var(--teal); }
+.t-gate { background:#0e1820; border-color:rgba(0,223,184,.5); color:rgba(0,223,184,.8); }
+.t-node { background:#0a1620; border-color:rgba(61,127,255,.35); color:rgba(100,160,220,.9); }
+.t-c0   { background:rgba(0,201,167,.08); border-color:var(--c0); color:var(--c0); }
+.t-c1   { background:rgba(255,107,157,.08); border-color:var(--c1); color:var(--c1); }
+.t-s0   { background:rgba(0,201,167,.16); border-color:var(--c0); color:var(--c0); box-shadow:0 0 14px rgba(0,201,167,.3); }
+.t-s1   { background:rgba(255,107,157,.16); border-color:var(--c1); color:var(--c1); box-shadow:0 0 14px rgba(255,107,157,.3); }
+.t-ctx  { background:rgba(168,85,247,.1); border-color:var(--violet); color:var(--violet); }
+.t-out  { background:rgba(255,176,32,.1); border-color:var(--amber); color:var(--amber); }
+.t-logit{ background:rgba(125,255,64,.08); border-color:var(--lime); color:var(--lime); }
+.t-zero { background:#080c14; border-color:#141c28; color:#202c3c; }
+.t-merge{ background:rgba(61,127,255,.1); border-color:var(--blue); color:var(--blue); }
+
+/* INSIGHT BOX */
+.insight {
+  display:flex; gap:10px; align-items:flex-start;
+  background:var(--panel); border-radius:0 8px 8px 0; border-left:3px solid var(--blue);
+  padding:10px 14px; margin-top:12px; font-size:11px; line-height:1.8; color:var(--text);
+}
+.insight.good { border-color:var(--teal); }
+.insight.warn { border-color:var(--amber); background:rgba(255,176,32,.05); color:var(--amber); }
+.insight.bad  { border-color:var(--rose); background:rgba(255,61,110,.05); }
+.insight.violet{ border-color:var(--violet); }
+.i-icon { font-size:18px; flex-shrink:0; margin-top:1px; }
+
+/* CONNECTOR WITH LABEL */
+.flow-connector {
+  display:flex; align-items:center; gap:0; margin:0;
+}
+.flow-conn-line {
+  flex:1; height:1px; background:var(--border2);
+}
+.flow-conn-label {
+  font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--muted);
+  padding:0 10px; white-space:nowrap;
+}
+
+/* VERTICAL FLOW */
+.vflow {
+  display:flex; flex-direction:column; align-items:center; gap:0;
+  margin:24px 0;
+}
+.vflow-line { width:2px; height:24px; background:var(--border2); }
+.vflow-arrow { color:var(--teal); font-size:18px; line-height:1; }
+.vflow-label {
+  font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--muted);
+  margin:4px 0;
+}
+
+/* GRID */
+.two { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:12px; }
+.three { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-top:12px; }
+
+/* TREE VIZ */
+.tree-visual {
+  display:flex; flex-direction:column; align-items:center; gap:0;
+  background:var(--panel); border:1px solid var(--border); border-radius:10px;
+  padding:16px;
+}
+.tv-row { display:flex; gap:8px; justify-content:center; }
+.tv-arr { text-align:center; color:var(--border2); font-size:12px; padding:3px 0; }
+.tv-label { font-size:9px; color:var(--muted); text-align:center; margin-bottom:4px; letter-spacing:1px; }
+
+/* SECTION DIVIDER */
+.section-div {
+  text-align:center; margin:48px 0 32px;
+  display:flex; align-items:center; gap:16px;
+}
+.section-div::before, .section-div::after { content:''; flex:1; height:1px; background:var(--border2); }
+.section-div span {
+  font-size:10px; letter-spacing:3px; text-transform:uppercase; color:var(--muted); white-space:nowrap;
+}
+
+/* RESULT CARD */
+.result-row { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:14px; }
+.result-card {
+  background:var(--panel); border:1px solid var(--border2); border-radius:9px;
+  padding:14px; text-align:center;
+}
+.result-val { font-family:'Playfair Display',serif; font-size:26px; font-weight:700; }
+.result-lbl { font-size:9px; letter-spacing:1px; text-transform:uppercase; color:var(--muted); margin-top:3px; }
+.result-sub { font-size:10px; color:var(--muted); margin-top:5px; }
+
+/* STRENGTHS GRID */
+.str-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; }
+.str-card {
+  background:var(--panel); border:1px solid var(--border2); border-radius:8px; padding:14px;
+}
+.str-icon { font-size:20px; margin-bottom:6px; }
+.str-title { font-size:11px; font-weight:600; margin-bottom:5px; }
+.str-desc { font-size:10px; color:var(--muted); line-height:1.7; }
+
+/* DIVIDING BORDER */
+.chunk-sep {
+  width:1px; background:var(--border2); align-self:stretch; margin:0 6px; border-radius:1px;
+}
+
+/* CAUSAL ANNOTATION */
+.causal-ann {
+  position:relative; background:rgba(255,176,32,.06); border:1px solid rgba(255,176,32,.2);
+  border-radius:8px; padding:10px 14px; font-size:10px; color:var(--amber); margin-top:8px;
+  line-height:1.7;
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- ═══════════════════════════════════════════════════════════════ HEADER -->
+<div class="page-hdr">
+  <div class="page-tag">Full Forward Pass Visualization</div>
+  <h1><em>"HELLO"</em> через WAT</h1>
+  <p>Каждый слой &middot; каждая формула &middot; каждое число &middot; результат &middot; объяснение</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ LAYER 0: INPUT -->
+<div class="lcard">
+  <div class="lcard-hdr">
+    <span class="lbadge" style="background:rgba(61,127,255,.15);color:var(--blue)">Layer 0</span>
+    <span class="lname">Входная последовательность</span>
+    <span class="lformula-inline">x = [H, E, L, L, O]</span>
+  </div>
+  <div class="lbody">
+    <div class="tok-flow">
+      <div class="tok-section">
+        <div class="tok-section-label">Символы</div>
+        <div class="tok-row">
+          <div class="tok"><div class="tok-box t-raw">H</div><div class="tok-sub">x&#8321;</div><div class="tok-sub2">idx=7</div></div>
+          <div class="tok"><div class="tok-box t-raw">E</div><div class="tok-sub">x&#8322;</div><div class="tok-sub2">idx=4</div></div>
+          <div class="tok"><div class="tok-box t-raw">L</div><div class="tok-sub">x&#8323;</div><div class="tok-sub2">idx=11</div></div>
+          <div class="tok"><div class="tok-box t-raw">L</div><div class="tok-sub">x&#8324;</div><div class="tok-sub2">idx=11</div></div>
+          <div class="tok"><div class="tok-box t-raw">O</div><div class="tok-sub">x&#8325;</div><div class="tok-sub2">idx=14</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="insight">
+      <span class="i-icon">&#128288;</span>
+      <span>Каждый символ преобразуется в целое число &mdash; индекс в словаре. "H"&rarr;7, "E"&rarr;4, "L"&rarr;11, "O"&rarr;14. Vocab size = 65 (все ASCII символы Шекспира). Эти индексы будут поданы в матрицу эмбеддингов.</span>
+    </div>
+  </div>
+</div>
+
+<!-- connector -->
+<div style="display:flex;flex-direction:column;align-items:center;padding:8px 0">
+  <div style="width:2px;height:20px;background:var(--border2)"></div>
+  <div style="color:var(--teal);font-size:16px">&#11015;</div>
+  <div style="font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-top:2px">embedding lookup</div>
+  <div style="width:2px;height:12px;background:var(--border2)"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ LAYER 1: EMBEDDING -->
+<div class="lcard">
+  <div class="lcard-hdr">
+    <span class="lbadge" style="background:rgba(61,127,255,.15);color:var(--blue)">Layer 1</span>
+    <span class="lname">Token Embedding + Positional Encoding</span>
+    <span class="lformula-inline">e&#8345; = E[x&#8345;] + P[t]</span>
+  </div>
+  <div class="lbody">
+    <div class="two">
+      <div>
+        <div class="fbox">E &#8712; &#8477;<sup>65&times;40</sup>   &mdash; матрица эмбеддингов
+P &#8712; &#8477;<sup>2048&times;40</sup> &mdash; позиционные векторы
+
+e&#8345; = E[x&#8345;] + P[t]
+
+<span class="fg">&#10003; Оба E и P &mdash; обучаемые параметры</span>
+<span class="fb">Размерность d = 40 на токен</span></div>
+        <div class="insight good" style="margin-top:8px">
+          <span class="i-icon">&#128218;</span>
+          <span><b>E[x&#8345;]</b> даёт семантику &mdash; "что это за символ". <b>P[t]</b> даёт позицию &mdash; "где он стоит". Без P[t] дерево не различает порядок: "HELLO" = "OHLEL".</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Результат: 5 векторов d=40</div>
+        <div class="tok-row" style="gap:6px">
+          <div class="tok"><div class="tok-box t-emb">e&#8321;</div><div class="tok-sub">H+pos1</div><div class="tok-sub2">d=40</div></div>
+          <div class="tok"><div class="tok-box t-emb">e&#8322;</div><div class="tok-sub">E+pos2</div><div class="tok-sub2">d=40</div></div>
+          <div class="tok"><div class="tok-box t-emb">e&#8323;</div><div class="tok-sub">L+pos3</div><div class="tok-sub2">d=40</div></div>
+          <div class="tok"><div class="tok-box t-emb">e&#8324;</div><div class="tok-sub">L+pos4</div><div class="tok-sub2">d=40</div></div>
+          <div class="tok"><div class="tok-box t-emb">e&#8325;</div><div class="tok-sub">O+pos5</div><div class="tok-sub2">d=40</div></div>
+        </div>
+        <div class="insight warn" style="margin-top:8px">
+          <span class="i-icon">&#9888;</span>
+          <span>Два соседних "L" (pos 3 и 4) имеют одинаковое E[x] но разные P[t]. Итого e&#8323; &#8800; e&#8324; &mdash; модель их различает.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- connector -->
+<div style="display:flex;flex-direction:column;align-items:center;padding:8px 0">
+  <div style="width:2px;height:20px;background:var(--border2)"></div>
+  <div style="color:var(--teal);font-size:16px">&#11015;</div>
+  <div style="font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-top:2px">conv1d(kernel=3, pad-left=2)</div>
+  <div style="width:2px;height:12px;background:var(--border2)"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ LAYER 2: CAUSAL CONV -->
+<div class="lcard">
+  <div class="lcard-hdr">
+    <span class="lbadge" style="background:rgba(0,223,184,.15);color:var(--teal)">Layer 2</span>
+    <span class="lname">CausalConv1d &mdash; локальный контекст</span>
+    <span class="lformula-inline">c&#8345; = Conv([e&#8345;&#8331;&#8322;, e&#8345;&#8331;&#8321;, e&#8345;])</span>
+  </div>
+  <div class="lbody">
+    <div style="margin-bottom:14px">
+      <div style="font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Окно свёртки для каждого токена (padding слева, нули)</div>
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto">
+        <table style="border-collapse:collapse;font-size:10px;width:100%">
+          <tr style="color:var(--muted)">
+            <td style="padding:4px 8px;white-space:nowrap">Токен</td>
+            <td style="padding:4px 12px;text-align:center">Окно [e&#8345;&#8331;&#8322;</td>
+            <td style="padding:4px 12px;text-align:center">e&#8345;&#8331;&#8321;</td>
+            <td style="padding:4px 12px;text-align:center">e&#8345;]</td>
+            <td style="padding:4px 12px;text-align:center">Результат</td>
+            <td style="padding:4px 8px">Видит</td>
+          </tr>
+          <tr style="border-top:1px solid var(--border)">
+            <td style="padding:6px 8px;color:var(--c0);font-weight:600">c&#8321; (H)</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--muted)">0</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--muted)">0</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--blue)">e&#8321;</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--teal)">c&#8321;</td>
+            <td style="padding:6px 8px;color:var(--muted);font-size:9px">только себя</td>
+          </tr>
+          <tr style="border-top:1px solid var(--border)">
+            <td style="padding:6px 8px;color:var(--c0);font-weight:600">c&#8322; (E)</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--muted)">0</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--blue)">e&#8321;</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--blue)">e&#8322;</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--teal)">c&#8322;</td>
+            <td style="padding:6px 8px;color:var(--muted);font-size:9px">H, E</td>
+          </tr>
+          <tr style="border-top:1px solid var(--border)">
+            <td style="padding:6px 8px;color:var(--c0);font-weight:600">c&#8323; (L)</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--blue)">e&#8321;</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--blue)">e&#8322;</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--blue)">e&#8323;</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--teal)">c&#8323;</td>
+            <td style="padding:6px 8px;color:var(--muted);font-size:9px">H, E, L</td>
+          </tr>
+          <tr style="border-top:1px solid var(--border)">
+            <td style="padding:6px 8px;color:var(--c1);font-weight:600">c&#8324; (L)</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--blue)">e&#8322;</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--blue)">e&#8323;</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--blue)">e&#8324;</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--teal)">c&#8324;</td>
+            <td style="padding:6px 8px;color:var(--muted);font-size:9px">E, L, L</td>
+          </tr>
+          <tr style="border-top:1px solid var(--border)">
+            <td style="padding:6px 8px;color:var(--c1);font-weight:600">c&#8325; (O)</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--blue)">e&#8323;</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--blue)">e&#8324;</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--blue)">e&#8325;</td>
+            <td style="text-align:center;padding:6px 12px;color:var(--teal)">c&#8325;</td>
+            <td style="padding:6px 8px;color:var(--muted);font-size:9px">L, L, O</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+    <div class="two">
+      <div>
+        <div class="fbox">W<sub>conv</sub> &#8712; &#8477;<sup>40&times;40&times;3</sup>
+
+c&#8345; = W<sub>conv</sub> &#10005; [e&#8345;&#8331;&#8322;, e&#8345;&#8331;&#8321;, e&#8345;]
+      <span class="fv">&#10005; = свёртка</span>
+
+<span class="fg">&#10003; e&#8345;&#8330;&#8321; никогда не видна &mdash; каузальность!</span></div>
+      </div>
+      <div>
+        <div class="insight good">
+          <span class="i-icon">&#128270;</span>
+          <span><b>Что даёт Conv?</b> c&#8325; ("O") уже знает что перед ним стоят "L","L". Это локальный n-gram контекст. Дерево затем поднимет его вверх до глобального уровня.</span>
+        </div>
+        <div class="insight warn" style="margin-top:8px">
+          <span class="i-icon">&#9888;</span>
+          <span><b>Слабость:</b> токен видит только 2 соседей. Для длинных зависимостей ("HELLO" &#8596; что было 50 токенов назад) нужно дерево.</span>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:14px;font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">После conv</div>
+    <div class="tok-row">
+      <div class="tok"><div class="tok-box t-emb" style="border-color:var(--teal);color:var(--teal)">c&#8321;</div><div class="tok-sub">H</div></div>
+      <div class="tok"><div class="tok-box t-emb" style="border-color:var(--teal);color:var(--teal)">c&#8322;</div><div class="tok-sub">HE</div></div>
+      <div class="tok"><div class="tok-box t-emb" style="border-color:var(--teal);color:var(--teal)">c&#8323;</div><div class="tok-sub">HEL</div></div>
+      <div class="chunk-sep"></div>
+      <div class="tok"><div class="tok-box t-emb" style="border-color:var(--c1);color:var(--c1)">c&#8324;</div><div class="tok-sub">ELL</div></div>
+      <div class="tok"><div class="tok-box t-emb" style="border-color:var(--c1);color:var(--c1)">c&#8325;</div><div class="tok-sub">LLO</div></div>
+      <div style="align-self:center;margin-left:8px;font-size:9px;color:var(--muted)">chunk 0 | chunk 1</div>
+    </div>
+  </div>
+</div>
+
+<!-- connector -->
+<div style="display:flex;flex-direction:column;align-items:center;padding:8px 0">
+  <div style="width:2px;height:20px;background:var(--border2)"></div>
+  <div style="color:var(--teal);font-size:16px">&#11015;</div>
+  <div style="font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-top:2px">multiplicative gate</div>
+  <div style="width:2px;height:12px;background:var(--border2)"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ LAYER 3: GATE -->
+<div class="lcard">
+  <div class="lcard-hdr">
+    <span class="lbadge" style="background:rgba(255,176,32,.15);color:var(--amber)">Layer 3</span>
+    <span class="lname">Input Gate &mdash; адаптивная фильтрация</span>
+    <span class="lformula-inline">n&#8345; = c&#8345; &#8857; &#963;(W&#8336; &middot; c&#8345;)</span>
+  </div>
+  <div class="lbody">
+    <div class="two">
+      <div>
+        <div class="fbox">gate&#8345; = &#963;(W<sub>gate</sub> &middot; c&#8345;)
+         <span class="fa">&#8712; (0, 1) для каждого из 40 измерений</span>
+
+node&#8345; = c&#8345; &#8857; gate&#8345;
+         <span class="fv">&#8857; = поэлементное умножение (Hadamard)</span>
+
+W<sub>gate</sub> &#8712; &#8477;<sup>40&times;40</sup>
+&#963; = sigmoid</div>
+        <div class="insight" style="margin-top:8px">
+          <span class="i-icon">&#127981;</span>
+          <span><b>Физический смысл:</b> каждое из 40 измерений вектора токена независимо "решает" насколько пропустить информацию. gate=0.9 на измерении 7 значит "это измерение важно для текущего контекста".</span>
+        </div>
+      </div>
+      <div>
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px">
+          <div style="font-size:9px;color:var(--muted);margin-bottom:10px;letter-spacing:1px;text-transform:uppercase">Пример для c&#8323; ("L" = HEL-контекст)</div>
+          <div style="font-size:11px;line-height:2;color:var(--text)">
+            c&#8323; = [0.3, -0.7, 0.5, ...]<br>
+            gate&#8323; = &#963;(W &middot; c&#8323;) = [<span style="color:var(--teal)">0.9</span>, <span style="color:var(--rose)">0.1</span>, <span style="color:var(--amber)">0.6</span>, ...]<br>
+            n&#8323; = [<span style="color:var(--teal)">0.27</span>, <span style="color:var(--rose)">-0.07</span>, <span style="color:var(--amber)">0.30</span>, ...]
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-top:8px">dim 0 пропущен (0.9), dim 1 заглушен (0.1)</div>
+        </div>
+        <div class="insight good" style="margin-top:8px">
+          <span class="i-icon">&#10024;</span>
+          <span><b>Сила:</b> GLU-style gate это современный стандарт. Он позволяет модели динамически решать что важно, не теряя градиенты (в отличие от ReLU).</span>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:14px;font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Nodes &mdash; входят в дерево</div>
+    <div class="tok-row">
+      <div class="tok"><div class="tok-box t-node">n&#8321;</div><div class="tok-sub">H</div></div>
+      <div class="tok"><div class="tok-box t-node">n&#8322;</div><div class="tok-sub">E</div></div>
+      <div class="tok"><div class="tok-box t-node">n&#8323;</div><div class="tok-sub">L</div></div>
+      <div class="chunk-sep"></div>
+      <div class="tok"><div class="tok-box t-node" style="border-color:var(--c1)">n&#8324;</div><div class="tok-sub">L</div></div>
+      <div class="tok"><div class="tok-box t-node" style="border-color:var(--c1)">n&#8325;</div><div class="tok-sub">O</div></div>
+      <div style="align-self:center;margin-left:8px;font-size:9px;color:var(--muted)">chunk 0 | chunk 1</div>
+    </div>
+  </div>
+</div>
+
+<!-- section divider -->
+<div class="section-div"><span>&#9472;&#9472; chunk-based tree reduction &#9472;&#9472;</span></div>
+
+<!-- ═══════════════════════════════════════════════════════════════ LAYER 4: CHUNKS + TREE -->
+<div class="lcard">
+  <div class="lcard-hdr">
+    <span class="lbadge" style="background:rgba(61,127,255,.15);color:var(--blue)">Layer 4</span>
+    <span class="lname">Chunk Tree Reduction &mdash; параллельные деревья</span>
+    <span class="lformula-inline">S = TreeReduce(chunk)</span>
+  </div>
+  <div class="lbody">
+
+    <!-- seq = 5, K=3 → chunk0=[n1,n2,n3], chunk1=[n4,n5] -->
+    <div style="margin-bottom:16px;font-size:11px;color:var(--text);line-height:1.8">
+      Seq_len=5, chunk_size K=3 &rarr; Chunk 0 = [n&#8321;,n&#8322;,n&#8323;], Chunk 1 = [n&#8324;,n&#8325;] (padding до 4)
+    </div>
+
+    <!-- MAIN FORMULA -->
+    <div class="fbox" style="margin-bottom:16px">GLU Merge (применяется на КАЖДОМ уровне дерева):
+
+combined = concat(left, right)    <span class="fb">d &rarr; 2d</span>
+
+val      = W<sub>val</sub>  &middot; combined         <span class="fg">&isin; &#8477;<sup>d</sup></span>
+gate     = &#963;(W<sub>gate</sub> &middot; combined)   <span class="fg">&isin; &#8477;<sup>d</sup>, (0,1)</span>
+merged   = RMSNorm(val &#8857; gate)   <span class="fv">&larr; GLU + нормализация</span>
+
+res_gate = &#963;(W<sub>res</sub> &middot; combined)    <span class="fg">&isin; &#8477;<sup>d</sup>, (0,1)</span>
+residual = (left + right) / 2       <span class="fa">&larr; среднее = identity</span>
+
+<span class="fl">out = res_gate &#8857; merged + (1 - res_gate) &#8857; residual</span>
+              <span class="fv">&#8593;                          &#8593;</span>
+      <span class="fv">learned merge            безопасный fallback</span>
+
+<span class="fg">W<sub>val</sub>, W<sub>gate</sub>, W<sub>res</sub> &#8712; &#8477;<sup>2d&times;d</sup>  &mdash; SHARED: одни для всех уровней!</span></div>
+
+    <!-- TREES SIDE BY SIDE -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+      <!-- CHUNK 0 TREE: n1 n2 n3 -->
+      <div class="tree-visual">
+        <div class="tv-label" style="color:var(--c0)">Chunk 0 &mdash; [H·HEL·HEL] = [n&#8321;, n&#8322;, n&#8323;]</div>
+
+        <!-- Level 0: leaves -->
+        <div class="tv-row" style="margin-bottom:2px">
+          <div class="tok"><div class="tok-box t-c0">n&#8321;</div><div class="tok-sub">H</div></div>
+          <div class="tok"><div class="tok-box t-c0">n&#8322;</div><div class="tok-sub">HE</div></div>
+          <div class="tok"><div class="tok-box t-c0">n&#8323;</div><div class="tok-sub">HEL</div></div>
+          <div class="tok"><div class="tok-box t-c0" style="opacity:.4">n&#8323;</div><div class="tok-sub" style="color:var(--border2)">pad</div></div>
+        </div>
+
+        <div class="tv-arr">&#x2193; merge пар<br><span style="font-size:9px;color:var(--muted)">Level 1</span></div>
+
+        <!-- Level 1: 2 merges -->
+        <div class="tv-row" style="margin-bottom:2px">
+          <div class="tok">
+            <div class="tok-box t-merge" style="width:52px">m&#8321;&#8322;</div>
+            <div class="tok-sub">GLU(n&#8321;,n&#8322;)</div>
+          </div>
+          <div class="tok">
+            <div class="tok-box t-merge" style="width:52px">m&#8323;&#8323;'</div>
+            <div class="tok-sub">GLU(n&#8323;,n&#8323;)</div>
+          </div>
+        </div>
+
+        <div class="tv-arr">&#x2193; финальный merge<br><span style="font-size:9px;color:var(--muted)">Level 2</span></div>
+
+        <!-- Root S0 -->
+        <div class="tv-row">
+          <div class="tok">
+            <div class="tok-box big t-s0">S&#8320;</div>
+            <div class="tok-sub" style="color:var(--c0)">summary chunk 0</div>
+            <div class="tok-sub2">знает H,E,L</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CHUNK 1 TREE: n4 n5 (padded to 4) -->
+      <div class="tree-visual">
+        <div class="tv-label" style="color:var(--c1)">Chunk 1 &mdash; [ELL·LLO] = [n&#8324;, n&#8325;]</div>
+
+        <!-- Level 0: leaves (with padding) -->
+        <div class="tv-row" style="margin-bottom:2px">
+          <div class="tok"><div class="tok-box t-c1">n&#8324;</div><div class="tok-sub">ELL</div></div>
+          <div class="tok"><div class="tok-box t-c1">n&#8325;</div><div class="tok-sub">LLO</div></div>
+          <div class="tok"><div class="tok-box t-c1" style="opacity:.3">&#183;</div><div class="tok-sub" style="color:var(--border2)">pad</div></div>
+          <div class="tok"><div class="tok-box t-c1" style="opacity:.3">&#183;</div><div class="tok-sub" style="color:var(--border2)">pad</div></div>
+        </div>
+
+        <div class="tv-arr">&#x2193; merge пар<br><span style="font-size:9px;color:var(--muted)">Level 1</span></div>
+
+        <!-- Level 1 -->
+        <div class="tv-row" style="margin-bottom:2px">
+          <div class="tok">
+            <div class="tok-box t-merge" style="width:52px">m&#8324;&#8325;</div>
+            <div class="tok-sub">GLU(n&#8324;,n&#8325;)</div>
+          </div>
+          <div class="tok">
+            <div class="tok-box t-merge" style="opacity:.3;width:52px">&#183;&#183;</div>
+            <div class="tok-sub" style="color:var(--border2)">pad</div>
+          </div>
+        </div>
+
+        <div class="tv-arr">&#x2193; финальный merge<br><span style="font-size:9px;color:var(--muted)">Level 2</span></div>
+
+        <!-- Root S1 -->
+        <div class="tv-row">
+          <div class="tok">
+            <div class="tok-box big t-s1">S&#8321;</div>
+            <div class="tok-sub" style="color:var(--c1)">summary chunk 1</div>
+            <div class="tok-sub2">знает L,O</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- GPU parallelism note -->
+    <div class="insight good" style="margin-top:14px">
+      <span class="i-icon">&#9889;</span>
+      <span><b>Параллелизм GPU:</b> reshape(B&times;C, K, d) превращает 2 чанка в 2 независимых батча. GPU вычисляет S&#8320; и S&#8321; <b>одновременно</b> за одну операцию. Никаких циклов, никакого clone() &mdash; именно поэтому V3 работает за 9s вместо 36s у V2.</span>
+    </div>
+
+    <div class="insight bad" style="margin-top:8px">
+      <span class="i-icon">&#128270;</span>
+      <span><b>Слабость chunk-based:</b> токен n&#8321; в начале Chunk 0 не получает global context из прошлых чанков (их нет). Токены в начале каждого чанка "слепее" чем токены в конце. Это объясняет -0.08 pp разрыв V3 vs V2.</span>
+    </div>
+
+    <!-- What's in S0, S1 -->
+    <div class="two" style="margin-top:14px">
+      <div style="background:var(--panel);border:1px solid rgba(0,201,167,.2);border-radius:8px;padding:12px">
+        <div style="font-size:10px;color:var(--c0);font-weight:600;margin-bottom:6px">S&#8320; содержит (после log&#8322;(K) уровней)</div>
+        <div style="font-size:10px;color:var(--text);line-height:1.8">
+          &#10003; Иерархическое сжатие H, E, L в d=40 чисел<br>
+          &#10003; Локальные паттерны (HE, EL, HEL)<br>
+          &#10003; Взвешенные через GLU gate важные признаки
+        </div>
+      </div>
+      <div style="background:var(--panel);border:1px solid rgba(255,107,157,.2);border-radius:8px;padding:12px">
+        <div style="font-size:10px;color:var(--c1);font-weight:600;margin-bottom:6px">S&#8321; содержит</div>
+        <div style="font-size:10px;color:var(--text);line-height:1.8">
+          &#10003; Иерархическое сжатие L, O в d=40 чисел<br>
+          &#10003; Паттерн "LLO" (LL + LO)<br>
+          &#10003; Взвешенные через GLU gate важные признаки
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- connector -->
+<div style="display:flex;flex-direction:column;align-items:center;padding:8px 0">
+  <div style="width:2px;height:20px;background:var(--border2)"></div>
+  <div style="color:var(--violet);font-size:16px">&#11015;</div>
+  <div style="font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-top:2px">causal cumulative mean</div>
+  <div style="width:2px;height:12px;background:var(--border2)"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ LAYER 5: GLOBAL CONTEXT -->
+<div class="lcard">
+  <div class="lcard-hdr">
+    <span class="lbadge" style="background:rgba(168,85,247,.15);color:var(--violet)">Layer 5</span>
+    <span class="lname">Global Context &mdash; каузальное среднее чанков</span>
+    <span class="lformula-inline">ctx[i] = mean(S&#8320;..S&#8333;&#8331;&#8321;)</span>
+  </div>
+  <div class="lbody">
+    <div class="fbox" style="margin-bottom:14px">cumsum = cumsum([S&#8320;, S&#8321;], dim=0)
+           <span class="fv">= [S&#8320;,  S&#8320;+S&#8321;]</span>
+
+counts = [1, 2]
+
+means  = cumsum / counts
+       <span class="fv">= [S&#8320;/1, (S&#8320;+S&#8321;)/2]</span>
+
+<span class="fl">ctx = concat([zeros(1,d), means[:-1]])</span>
+    <span class="fv">= [0,  S&#8320;]     &larr; сдвиг вправо!</span>
+                      <span class="fg">&#10003; каузальность гарантирована</span></div>
+
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px">
+
+      <!-- CTX для chunk 0 -->
+      <div style="flex:1;min-width:180px;background:var(--panel);border:1px solid rgba(0,201,167,.2);border-radius:8px;padding:14px">
+        <div style="font-size:10px;color:var(--c0);font-weight:600;margin-bottom:8px">ctx[0] &mdash; для Chunk 0 (H,E,L)</div>
+        <div class="tok-row" style="justify-content:center;margin-bottom:8px">
+          <div class="tok"><div class="tok-box t-zero big">0</div><div class="tok-sub">нули</div></div>
+        </div>
+        <div style="font-size:10px;color:var(--muted);text-align:center;line-height:1.8">Chunk 0 первый в последовательности.<br>Нет прошлых чанков &rarr; ctx = 0<br>Токены H,E,L получают <b style="color:var(--rose)">нулевой</b> глобальный контекст</div>
+      </div>
+
+      <div style="display:flex;align-items:center;font-size:22px;color:var(--border2)">&#8594;</div>
+
+      <!-- CTX для chunk 1 -->
+      <div style="flex:1;min-width:180px;background:var(--panel);border:1px solid rgba(255,107,157,.2);border-radius:8px;padding:14px">
+        <div style="font-size:10px;color:var(--c1);font-weight:600;margin-bottom:8px">ctx[1] &mdash; для Chunk 1 (L,O)</div>
+        <div class="tok-row" style="justify-content:center;margin-bottom:8px">
+          <div class="tok"><div class="tok-box t-s0 big">S&#8320;</div><div class="tok-sub">mean(S&#8320;)</div></div>
+        </div>
+        <div style="font-size:10px;color:var(--muted);text-align:center;line-height:1.8">Chunk 1 видит summary Chunk 0 (H,E,L).<br>Токены L,O получают <b style="color:var(--teal)">контекст</b> всей первой части.<br>ctx[1] = S&#8320; (знает "HEL")</div>
+      </div>
+
+    </div>
+
+    <!-- INJECTION -->
+    <div style="font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Инжекция: каждый токен получает глобальный контекст своего чанка</div>
+    <div class="fbox" style="margin-bottom:12px">n'&#8345; = n&#8345; + W<sub>global</sub> &middot; ctx[chunk(t)]
+
+W<sub>global</sub> &#8712; &#8477;<sup>40&times;40</sup>
+<span class="fv">chunk(t) = t // K  &larr; индекс чанка для токена t</span>
+
+n'&#8321; = n&#8321; + W<sub>g</sub> &middot; 0        <span class="fa">&larr; H не знает ничего о прошлом</span>
+n'&#8322; = n&#8322; + W<sub>g</sub> &middot; 0        <span class="fa">&larr; E не знает ничего о прошлом</span>
+n'&#8323; = n&#8323; + W<sub>g</sub> &middot; 0        <span class="fa">&larr; L не знает ничего о прошлом</span>
+n'&#8324; = n&#8324; + W<sub>g</sub> &middot; S&#8320;   <span class="fg">&larr; L знает HEL через S&#8320;</span>
+n'&#8325; = n&#8325; + W<sub>g</sub> &middot; S&#8320;   <span class="fg">&larr; O знает HEL через S&#8320;</span></div>
+
+    <div style="margin-top:6px;font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Обогащённые токены</div>
+    <div class="tok-row">
+      <div class="tok"><div class="tok-box t-node">n'&#8321;</div><div class="tok-sub">H</div><div class="tok-sub2">ctx=0</div></div>
+      <div class="tok"><div class="tok-box t-node">n'&#8322;</div><div class="tok-sub">E</div><div class="tok-sub2">ctx=0</div></div>
+      <div class="tok"><div class="tok-box t-node">n'&#8323;</div><div class="tok-sub">L</div><div class="tok-sub2">ctx=0</div></div>
+      <div class="chunk-sep"></div>
+      <div class="tok"><div class="tok-box t-ctx">n'&#8324;</div><div class="tok-sub">L</div><div class="tok-sub2">ctx=S&#8320;</div></div>
+      <div class="tok"><div class="tok-box t-ctx">n'&#8325;</div><div class="tok-sub">O</div><div class="tok-sub2">ctx=S&#8320;</div></div>
+    </div>
+    <div class="causal-ann" style="margin-top:12px">
+      &#9888; <b>Два "L" теперь разные по-настоящему:</b> n'&#8323; (L в chunk 0) имеет ctx=0, а n'&#8324; (L в chunk 1) имеет ctx=S&#8320; который содержит информацию о предыдущем контексте. Модель разрешила омонимию позиционно и контекстуально.
+    </div>
+  </div>
+</div>
+
+<!-- connector -->
+<div style="display:flex;flex-direction:column;align-items:center;padding:8px 0">
+  <div style="width:2px;height:20px;background:var(--border2)"></div>
+  <div style="color:var(--amber);font-size:16px">&#11015;</div>
+  <div style="font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-top:2px">linear projection</div>
+  <div style="width:2px;height:12px;background:var(--border2)"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ LAYER 6: OUTPUT -->
+<div class="lcard">
+  <div class="lcard-hdr">
+    <span class="lbadge" style="background:rgba(255,176,32,.15);color:var(--amber)">Layer 6</span>
+    <span class="lname">Output &mdash; предсказание следующего токена</span>
+    <span class="lformula-inline">logits = W&#7523; &middot; n'&#8345; &#8712; &#8477;<sup>65</sup></span>
+  </div>
+  <div class="lbody">
+    <div class="two">
+      <div>
+        <div class="fbox">logits&#8345; = W<sub>predict</sub> &middot; n'&#8345;
+           <span class="fb">&#8712; &#8477;<sup>65</sup>  (1 число на символ словаря)</span>
+
+p&#8345; = softmax(logits&#8345;)
+       <span class="fg">&#8712; &#8477;<sup>65</sup>, &#8721;p=1  (вероятности)</span>
+
+prediction&#8345; = argmax(p&#8345;)
+                 <span class="fv">&larr; наиболее вероятный следующий токен</span>
+
+loss = CrossEntropy(logits, y<sub>true</sub>)
+     <span class="fa">&larr; y<sub>true</sub> = реальный следующий токен</span></div>
+
+        <div class="insight good" style="margin-top:8px">
+          <span class="i-icon">&#128200;</span>
+          <span><b>Seq2Seq мощь:</b> 5 предсказаний за 1 forward pass. Каждый токен предсказывает следующий. Loss = среднее по всем 5. Это в 5x больше градиентного сигнала чем One-to-One (V1).</span>
+        </div>
+      </div>
+      <div>
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px">
+          <div style="font-size:10px;color:var(--muted);margin-bottom:10px;letter-spacing:1px;text-transform:uppercase">5 предсказаний за 1 pass</div>
+          <div style="font-size:11px;line-height:2.2;color:var(--text)">
+            n'&#8321; &rarr; p(&#63;|H) &rarr; <span style="color:var(--lime)">&#9655; E (44%)</span><br>
+            n'&#8322; &rarr; p(&#63;|HE) &rarr; <span style="color:var(--lime)">&#9655; L (67%)</span><br>
+            n'&#8323; &rarr; p(&#63;|HEL) &rarr; <span style="color:var(--lime)">&#9655; L (71%)</span><br>
+            n'&#8324; &rarr; p(&#63;|HELL) &rarr; <span style="color:var(--lime)">&#9655; O (89%)</span><br>
+            n'&#8325; &rarr; p(&#63;|HELLO) &rarr; <span style="color:var(--amber)">&#9655; &lt;space&gt;, W, ...</span>
+          </div>
+        </div>
+        <div style="margin-top:10px;font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">Логиты и вероятности</div>
+        <div class="tok-row">
+          <div class="tok"><div class="tok-box t-logit">&#375;&#8321;</div><div class="tok-sub">H&#8594;E?</div></div>
+          <div class="tok"><div class="tok-box t-logit">&#375;&#8322;</div><div class="tok-sub">E&#8594;L?</div></div>
+          <div class="tok"><div class="tok-box t-logit">&#375;&#8323;</div><div class="tok-sub">L&#8594;L?</div></div>
+          <div class="tok"><div class="tok-box t-logit">&#375;&#8324;</div><div class="tok-sub">L&#8594;O?</div></div>
+          <div class="tok"><div class="tok-box t-logit">&#375;&#8325;</div><div class="tok-sub">O&#8594;?</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ FULL FLOW SUMMARY -->
+<div class="section-div"><span>&#9472;&#9472; итого: полный проход &#9472;&#9472;</span></div>
+
+<div class="lcard">
+  <div class="lcard-hdr">
+    <span class="lbadge" style="background:rgba(125,255,64,.12);color:var(--lime)">Summary</span>
+    <span class="lname">"HELLO" &rarr; WAT &rarr; 5 предсказаний</span>
+    <span class="lformula-inline">O(n log K) end-to-end</span>
+  </div>
+  <div class="lbody">
+
+    <!-- LINEAR FLOW -->
+    <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:20px;padding:16px;background:var(--panel);border:1px solid var(--border);border-radius:10px">
+      <div style="text-align:center">
+        <div style="font-size:11px;color:var(--white);font-weight:600">H,E,L,L,O</div>
+        <div style="font-size:9px;color:var(--muted)">input</div>
+      </div>
+      <div style="color:var(--border2);font-size:18px;padding:0 4px">&#8594;</div>
+      <div style="text-align:center;background:rgba(61,127,255,.08);border:1px solid rgba(61,127,255,.2);border-radius:6px;padding:6px 10px">
+        <div style="font-size:10px;color:var(--blue)">Embedding</div>
+        <div style="font-size:9px;color:var(--muted)">+pos</div>
+      </div>
+      <div style="color:var(--border2);font-size:18px;padding:0 4px">&#8594;</div>
+      <div style="text-align:center;background:rgba(0,223,184,.08);border:1px solid rgba(0,223,184,.2);border-radius:6px;padding:6px 10px">
+        <div style="font-size:10px;color:var(--teal)">CausalConv</div>
+        <div style="font-size:9px;color:var(--muted)">kernel=3</div>
+      </div>
+      <div style="color:var(--border2);font-size:18px;padding:0 4px">&#8594;</div>
+      <div style="text-align:center;background:rgba(255,176,32,.08);border:1px solid rgba(255,176,32,.2);border-radius:6px;padding:6px 10px">
+        <div style="font-size:10px;color:var(--amber)">Gate</div>
+        <div style="font-size:9px;color:var(--muted)">&#963;(Wc)&#8857;c</div>
+      </div>
+      <div style="color:var(--border2);font-size:18px;padding:0 4px">&#8594;</div>
+      <div style="text-align:center;background:rgba(61,127,255,.1);border:1px solid rgba(61,127,255,.3);border-radius:6px;padding:6px 10px">
+        <div style="font-size:10px;color:var(--blue)">&#127794; Tree &#127794;</div>
+        <div style="font-size:9px;color:var(--muted)">GLU+RMSNorm</div>
+      </div>
+      <div style="color:var(--border2);font-size:18px;padding:0 4px">&#8594;</div>
+      <div style="text-align:center;background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.2);border-radius:6px;padding:6px 10px">
+        <div style="font-size:10px;color:var(--violet)">Global Ctx</div>
+        <div style="font-size:9px;color:var(--muted)">causal mean</div>
+      </div>
+      <div style="color:var(--border2);font-size:18px;padding:0 4px">&#8594;</div>
+      <div style="text-align:center;background:rgba(125,255,64,.08);border:1px solid rgba(125,255,64,.2);border-radius:6px;padding:6px 10px">
+        <div style="font-size:10px;color:var(--lime)">5 logits</div>
+        <div style="font-size:9px;color:var(--muted)">W&#7523;&middot;n'</div>
+      </div>
+    </div>
+
+    <!-- STRENGTHS / WEAKNESSES -->
+    <div class="str-grid">
+      <div class="str-card" style="border-color:rgba(0,223,184,.25)">
+        <div class="str-icon">&#9889;</div>
+        <div class="str-title" style="color:var(--teal)">&#10003; Скорость O(n log K)</div>
+        <div class="str-desc">Чанки редуцируются параллельно. При K=32, n=512: O(5n) &asymp; линейно. Transformer: O(n&sup2;). Разница 9s vs 18s на epoch.</div>
+      </div>
+      <div class="str-card" style="border-color:rgba(0,223,184,.25)">
+        <div class="str-icon">&#127968;</div>
+        <div class="str-title" style="color:var(--teal)">&#10003; Иерархическая структура</div>
+        <div class="str-desc">Скобки сначала группируются локально, затем регионально. Натуральный prior для синтаксиса, вложенности, документов. +18pp на bracket balance.</div>
+      </div>
+      <div class="str-card" style="border-color:rgba(0,223,184,.25)">
+        <div class="str-icon">&#128200;</div>
+        <div class="str-title" style="color:var(--teal)">&#10003; Shared weights</div>
+        <div class="str-desc">W_val, W_gate, W_res одни для всех уровней дерева. Параметры не растут с n. Merge "H+E" и merge "S&#8320;+S&#8321;" используют один и тот же механизм.</div>
+      </div>
+      <div class="str-card" style="border-color:rgba(255,61,110,.2)">
+        <div class="str-icon">&#128269;</div>
+        <div class="str-title" style="color:var(--rose)">&#10005; O(log n) путь между токенами</div>
+        <div class="str-desc">Transformer имеет O(1) прямой путь. WAT &mdash; O(log n) через дерево. Для задач с direct long-range matching (coreference) это может быть слабее.</div>
+      </div>
+      <div class="str-card" style="border-color:rgba(255,61,110,.2)">
+        <div class="str-icon">&#129529;</div>
+        <div class="str-title" style="color:var(--rose)">&#10005; Chunk boundaries</div>
+        <div class="str-desc">Первые токены чанка получают ctx=0. Если важная зависимость пересекает границу чанка &mdash; она видна только через global mean, который усредняет.</div>
+      </div>
+      <div class="str-card" style="border-color:rgba(255,176,32,.2)">
+        <div class="str-icon">&#128202;</div>
+        <div class="str-title" style="color:var(--amber)">&#9888; Масштаб не протестирован</div>
+        <div class="str-desc">Результаты получены на ~105K параметров. Transformer исторически выигрывает при масштабировании. Поведение WAT при 1M, 10M+ параметрах неизвестно.</div>
+      </div>
+    </div>
+
+    <!-- RESULTS -->
+    <div style="margin-top:20px;font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px">Экспериментальные результаты (&#126;105K params)</div>
+    <div class="result-row">
+      <div class="result-card" style="border-color:rgba(0,223,184,.3)">
+        <div class="result-val" style="color:var(--teal)">47.2%</div>
+        <div class="result-lbl">WAT V3 accuracy</div>
+        <div class="result-sub">Shakespeare, seq=512, ep.30</div>
+      </div>
+      <div class="result-card" style="border-color:rgba(255,61,110,.3)">
+        <div class="result-val" style="color:var(--rose)">36.3%</div>
+        <div class="result-lbl">Transformer accuracy</div>
+        <div class="result-sub">Shakespeare, seq=512, ep.30</div>
+      </div>
+      <div class="result-card" style="border-color:rgba(61,127,255,.3)">
+        <div class="result-val" style="color:var(--blue)">75% vs 57%</div>
+        <div class="result-lbl">WAT vs Trans (brackets)</div>
+        <div class="result-sub">seq 512-1024, long range</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- footer -->
+<div style="text-align:center;margin-top:48px;font-size:10px;color:var(--border2);letter-spacing:1px">
+  WAT: Wave-Attractor-Tree &mdash; Architecture Visualization &mdash; 2025
+</div>
+
+</div>
+</body>
+</html>
