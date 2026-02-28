@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WAT Seq2Seq</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Playfair+Display:wght@700&display=swap');
+:root {
+  --bg:#06080f; --surface:#0c1020; --panel:#101828; --border:#1c2a40;
+  --blue:#2979ff; --teal:#00e5c8; --amber:#ffb300; --rose:#ff4081;
+  --violet:#b967ff; --lime:#76ff03; --text:#c8d8f5; --muted:#4a6080; --white:#e8f2ff;
+  --c0:#00c9a7; --c1:#ff6b9d;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'IBM Plex Mono',monospace;min-height:100vh}
+body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(circle,rgba(41,121,255,.13) 1px,transparent 1px);background-size:32px 32px;pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;max-width:1020px;margin:0 auto;padding:40px 20px 80px}
+.hdr{text-align:center;margin-bottom:48px}
+.hdr-tag{display:inline-block;font-size:9px;letter-spacing:4px;text-transform:uppercase;color:var(--teal);border:1px solid rgba(0,229,200,.3);border-radius:20px;padding:4px 16px;margin-bottom:16px}
+.hdr h1{font-family:'Playfair Display',serif;font-size:clamp(26px,5vw,52px);font-weight:700;color:var(--white);margin-bottom:8px}
+.hdr h1 span{color:var(--blue)}
+.hdr p{font-size:11px;color:var(--muted);letter-spacing:1px}
+.progress{width:100%;height:2px;background:var(--border);border-radius:2px;margin-bottom:24px}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--teal));border-radius:2px;transition:width .4s}
+.snav{display:flex;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:28px}
+.snav-btn{flex:1;padding:12px 4px;background:none;border:none;border-right:1px solid var(--border);cursor:pointer;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px;transition:all .2s}
+.snav-btn:last-child{border-right:none}
+.snav-btn:hover{background:rgba(41,121,255,.08);color:var(--text)}
+.snav-btn.active{background:rgba(41,121,255,.15);color:var(--blue)}
+.snav-btn.done{color:var(--teal)}
+.stage{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:20px;animation:fadeUp .25s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.stage-hdr{display:flex;align-items:center;gap:12px;padding:16px 22px;border-bottom:1px solid var(--border)}
+.stage-num{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0}
+.stage-title{font-family:'Playfair Display',serif;font-size:18px;color:var(--white)}
+.stage-badge{margin-left:auto;font-size:9px;padding:3px 9px;border-radius:4px;letter-spacing:1px;text-transform:uppercase;white-space:nowrap}
+.stage-body{padding:22px}
+.slabel{font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.slabel::after{content:'';flex:1;height:1px;background:var(--border)}
+.tok-row{display:flex;flex-wrap:wrap;gap:5px;align-items:flex-end}
+.tok{width:40px;height:40px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;border:1px solid transparent;flex-shrink:0}
+.tok.big{width:48px;height:48px;font-size:13px;border-radius:8px}
+.tok-lbl{font-size:9px;color:var(--muted);text-align:center;margin-top:2px}
+.tok-grp{display:flex;flex-direction:column;align-items:center}
+.tk-raw{background:#0a1020;border-color:#1a2a40;color:#506080}
+.tk-emb{background:#0d1a30;border-color:#1e3060;color:#6090c0}
+.tk-conv{background:#0d1e34;border-color:var(--blue);color:var(--blue)}
+.tk-node{background:#0c1a2e;border-color:#1e3a5a;color:#60a0d0}
+.tk-c0{background:rgba(0,201,167,.1);border-color:var(--c0);color:var(--c0)}
+.tk-c1{background:rgba(255,107,157,.1);border-color:var(--c1);color:var(--c1)}
+.tk-s0{background:rgba(0,201,167,.18);border-color:var(--c0);color:var(--c0);box-shadow:0 0 12px rgba(0,201,167,.25)}
+.tk-s1{background:rgba(255,107,157,.18);border-color:var(--c1);color:var(--c1);box-shadow:0 0 12px rgba(255,107,157,.25)}
+.tk-ctx{background:rgba(185,103,255,.12);border-color:var(--violet);color:var(--violet)}
+.tk-zero{background:#0a0e18;border-color:#1a2030;color:#2a3a50}
+.tk-out{background:rgba(255,179,0,.1);border-color:var(--amber);color:var(--amber)}
+.tk-logit{background:rgba(118,255,3,.08);border-color:var(--lime);color:var(--lime)}
+.cdiv{width:2px;background:var(--border);align-self:stretch;border-radius:2px;margin:0 2px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.fbox{background:#060c18;border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:11px;line-height:1.9;color:#7bb8f0;white-space:pre;overflow-x:auto}
+.fg{color:var(--teal)} .fb{color:var(--blue)} .fa{color:var(--amber)} .fv{color:var(--violet)} .fr{color:var(--rose)}
+.ann{font-size:11px;line-height:1.8;color:var(--text);background:var(--panel);border-left:3px solid var(--blue);border-radius:0 6px 6px 0;padding:11px 13px}
+.ann.teal{border-color:var(--teal)} .ann.amber{border-color:var(--amber)} .ann.violet{border-color:var(--violet)}
+.warn{font-size:11px;background:rgba(255,179,0,.07);border:1px solid rgba(255,179,0,.25);border-radius:6px;padding:9px 13px;color:var(--amber)}
+.tree-col{display:flex;flex-direction:column;align-items:center}
+.tree-lv{display:flex;gap:5px;justify-content:center}
+.tree-arr{font-size:11px;color:var(--muted);padding:4px 0;text-align:center}
+.chunks-g{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.chunk-box{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px 8px}
+.chunk-hdr{font-size:9px;letter-spacing:2px;text-transform:uppercase;text-align:center;padding:3px 8px;border-radius:4px;margin-bottom:8px}
+.ctx-flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(185,103,255,.05);border:1px solid rgba(185,103,255,.2);border-radius:8px;padding:14px;margin:12px 0}
+.ctx-blk{display:flex;flex-direction:column;align-items:center;gap:4px}
+.ctx-lbl{font-size:9px;color:var(--muted)}
+.ctx-sub{font-size:9px;color:var(--violet)}
+.ctx-arr{font-size:16px;color:var(--border);flex-shrink:0}
+.rg{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.rc{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center}
+.rc-val{font-family:'Playfair Display',serif;font-size:24px;font-weight:700}
+.rc-lbl{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-top:3px}
+.rc-sub{font-size:10px;color:var(--muted);margin-top:5px}
+.cmp{background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.cmp-hdr{padding:9px 13px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase}
+.cmp-row{display:flex;justify-content:space-between;padding:7px 13px;border-top:1px solid var(--border);font-size:11px}
+.cmp-key{color:var(--muted)}
+.good{color:var(--teal);font-weight:600} .bad{color:var(--rose);font-weight:600}
+.controls{display:flex;gap:10px;justify-content:center}
+.btn{padding:10px 24px;border-radius:6px;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:1px;cursor:pointer;border:1px solid;transition:all .2s}
+.btn-pri{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn-pri:hover{background:#1a5fd4}
+.btn-sec{background:transparent;border-color:#243550;color:var(--text)}
+.btn-sec:hover{border-color:var(--blue);color:var(--blue)}
+.btn:disabled{opacity:.3;pointer-events:none}
+@media(max-width:600px){.two-col,.rg{grid-template-columns:1fr 1fr}.chunks-g{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <div class="hdr-tag">Architecture Walkthrough</div>
+    <h1><span>WAT</span> Seq2Seq Visual Guide</h1>
+    <p>Wave &middot; Attractor &middot; Tree &nbsp;&middot;&nbsp; Chunk-based Parallel Reduction &nbsp;&middot;&nbsp; O(n log K)</p>
+  </div>
+  <div class="progress"><div class="progress-fill" id="prog"></div></div>
+  <div class="snav" id="snav"></div>
+  <div id="stage"></div>
+  <div class="controls">
+    <button class="btn btn-sec" id="btnP" onclick="goNav(-1)">&larr; Назад</button>
+    <button class="btn btn-pri" id="btnN" onclick="goNav(1)">Далее &rarr;</button>
+  </div>
+</div>
+<script>
+var S = 0;
+var N = 7;
+
+function tok(cls, label, sub) {
+  return '<div class="tok-grp"><div class="tok ' + cls + '">' + label + '</div>' +
+    (sub ? '<div class="tok-lbl">' + sub + '</div>' : '') + '</div>';
+}
+function tokB(cls, label, sub) {
+  return '<div class="tok-grp"><div class="tok big ' + cls + '">' + label + '</div>' +
+    (sub ? '<div class="tok-lbl">' + sub + '</div>' : '') + '</div>';
+}
+
+function buildSeq(cls, prefix, withDiv) {
+  var r = '';
+  for (var i = 0; i < 8; i++) {
+    if (withDiv && i === 4) r += '<div class="cdiv"></div>';
+    r += tok(cls, prefix + (i + 1), 't' + (i + 1));
+  }
+  return r;
+}
+
+var chars = ['H','E','L','L','O','_','W','O'];
+
+function s0() {
+  var raw = '';
+  for (var i = 0; i < 8; i++) {
+    if (i === 4) raw += '<div class="cdiv"></div>';
+    raw += tok('tk-raw', chars[i] === '_' ? '&bull;' : chars[i], 't' + (i+1));
+  }
+  return '<div class="slabel">Входные токены</div>' +
+    '<div class="tok-row" style="margin-bottom:18px">' + raw + '</div>' +
+    '<div class="slabel">После Embedding + Positional Encoding</div>' +
+    '<div class="tok-row" style="margin-bottom:18px">' + buildSeq('tk-emb','e',true) + '</div>' +
+    '<div class="two-col">' +
+      '<div class="fbox">e_t = E[x_t] + P[t]\n\nE &isin; &real;<sup>|V|&times;d</sup>  &mdash; token matrix\nP &isin; &real;<sup>n&times;d</sup>  &mdash; position matrix\n\n<span class="fg">Both learnable.</span></div>' +
+      '<div class="ann teal"><b>Зачем позиции?</b><br><br>Дерево не знает порядок само по себе. Токен t1 и t5 выглядят одинаково без P[t]. Позиционный вектор говорит модели где находится токен до входа в дерево.</div>' +
+    '</div>';
+}
+
+function s1() {
+  var emb = '';
+  for (var i = 0; i < 8; i++) {
+    if (i === 4) emb += '<div class="cdiv"></div>';
+    emb += tok('tk-emb', 'e'+(i+1), '');
+  }
+  return '<div class="slabel">Окно свёртки &mdash; каждый токен смотрит только НАЗАД</div>' +
+    '<div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px">' +
+      '<div class="tok-row" style="margin-bottom:12px">' + emb + '</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Для токена <b style="color:var(--teal)">c4</b> окно = [e2, e3, e4]:</div>' +
+      '<div class="tok-row">' +
+        tok('tk-emb','e2','past-2') + tok('tk-emb','e3','past-1') + tok('tk-conv','e4','current') +
+        '<div style="font-size:18px;color:var(--muted);align-self:center;padding:0 8px">&rarr;</div>' +
+        tok('tk-conv','c4','result') +
+      '</div>' +
+    '</div>' +
+    '<div class="two-col">' +
+      '<div class="fbox">padding = (2, 0) <span class="fg">&larr; left only!</span>\n\nc_t = Conv([e_(t-2), e_(t-1), e_t])\n\n<span class="fb">e_(t+1) invisible &mdash; causal OK</span></div>' +
+      '<div>' +
+        '<div class="ann teal"><b>Зачем?</b><br><br>Conv даёт токену t информацию о двух соседях до него. Это локальный n-gram контекст который дерево затем поднимает вверх.</div>' +
+        '<div class="warn" style="margin-top:10px">&#9888; V1 использовал padding=1 (симметричный) &mdash; утечка будущего! V2/V3 исправлено.</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="slabel" style="margin-top:14px">После свёртки</div>' +
+    '<div class="tok-row">' + buildSeq('tk-conv','c',true) + '</div>';
+}
+
+function s2() {
+  return '<div class="slabel">Input Gate &mdash; мультипликативная фильтрация</div>' +
+    '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px">' +
+      '<div><div style="font-size:9px;color:var(--muted);margin-bottom:6px">After Conv</div>' +
+        '<div class="tok-row">' + buildSeq('tk-conv','c',true) + '</div></div>' +
+      '<div style="font-size:24px;color:var(--muted)">&rarr;</div>' +
+      '<div><div style="font-size:9px;color:var(--muted);margin-bottom:6px">Nodes (after gate)</div>' +
+        '<div class="tok-row">' + buildSeq('tk-node','n',true) + '</div></div>' +
+    '</div>' +
+    '<div class="two-col">' +
+      '<div class="fbox">gate   = &sigma;(W_gate &middot; c_t)  &isin; (0,1)\n\nnode_t = c_t &odot; gate\n\nW_gate &isin; &real;<sup>d&times;d</sup>  learnable</div>' +
+      '<div class="ann amber"><b>Что делает gate?</b><br><br>gate &rarr; 0 : токен заглушается<br>gate &rarr; 1 : токен проходит полностью<br><br>Модель сама учится какие позиции важны.</div>' +
+    '</div>';
+}
+
+function s3() {
+  var c0 = tok('tk-c0','n1','pos 0')+tok('tk-c0','n2','pos 1')+tok('tk-c0','n3','pos 2')+tok('tk-c0','n4','pos 3');
+  var c1 = tok('tk-c1','n5','pos 4')+tok('tk-c1','n6','pos 5')+tok('tk-c1','n7','pos 6')+tok('tk-c1','n8','pos 7');
+  var all = '';
+  for (var i = 0; i < 8; i++) {
+    if (i === 4) all += '<div class="cdiv"></div>';
+    all += tok(i < 4 ? 'tk-c0' : 'tk-c1', 'n'+(i+1), '');
+  }
+  return '<div class="slabel">seq_len=8, K=4 &rarr; C=2 чанка</div>' +
+    '<div class="tok-row" style="margin-bottom:18px">' + all + '</div>' +
+    '<div class="chunks-g">' +
+      '<div class="chunk-box">' +
+        '<div class="chunk-hdr" style="background:rgba(0,201,167,.08);color:var(--c0);border:1px solid rgba(0,201,167,.2)">Chunk 0 &mdash; pos 0..3</div>' +
+        '<div class="tok-row" style="justify-content:center">' + c0 + '</div>' +
+      '</div>' +
+      '<div class="chunk-box">' +
+        '<div class="chunk-hdr" style="background:rgba(255,107,157,.08);color:var(--c1);border:1px solid rgba(255,107,157,.2)">Chunk 1 &mdash; pos 4..7</div>' +
+        '<div class="tok-row" style="justify-content:center">' + c1 + '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="ann teal" style="margin-top:12px"><b>Ключевой трюк:</b> после unfold(1,K,K) делаем reshape(B&times;C, K, d). GPU видит <b>B&times;C независимых батчей</b> &mdash; все чанки редуцируются одновременно без clone() и циклов.</div>' +
+    '<div class="fbox" style="margin-top:12px">chunks = nodes.unfold(1, K, K).transpose(2,3)\n         <span class="fg"># (B, C, K, d)</span>\nflat   = chunks.reshape(B*C, K, d)\n         <span class="fb"># GPU: B*C независимых задач</span></div>';
+}
+
+function s4() {
+  var c0l = tok('tk-c0','n1','')+tok('tk-c0','n2','')+tok('tk-c0','n3','')+tok('tk-c0','n4','');
+  var c1l = tok('tk-c1','n5','')+tok('tk-c1','n6','')+tok('tk-c1','n7','')+tok('tk-c1','n8','');
+  return '<div class="slabel">Оба чанка редуцируются параллельно на GPU</div>' +
+    '<div class="chunks-g">' +
+      '<div class="chunk-box">' +
+        '<div class="chunk-hdr" style="background:rgba(0,201,167,.08);color:var(--c0);border:1px solid rgba(0,201,167,.2)">Chunk 0</div>' +
+        '<div class="tree-col">' +
+          '<div class="tree-lv">' + c0l + '</div>' +
+          '<div class="tree-arr">&darr; merge pairs (Level 1)</div>' +
+          '<div class="tree-lv">' + tok('tk-c0','m12','GLU(n1,n2)') + tok('tk-c0','m34','GLU(n3,n4)') + '</div>' +
+          '<div class="tree-arr">&darr; merge root (Level 2)</div>' +
+          '<div class="tree-lv">' + tokB('tk-s0','S0','summary') + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="chunk-box">' +
+        '<div class="chunk-hdr" style="background:rgba(255,107,157,.08);color:var(--c1);border:1px solid rgba(255,107,157,.2)">Chunk 1</div>' +
+        '<div class="tree-col">' +
+          '<div class="tree-lv">' + c1l + '</div>' +
+          '<div class="tree-arr">&darr; merge pairs (Level 1)</div>' +
+          '<div class="tree-lv">' + tok('tk-c1','m56','GLU(n5,n6)') + tok('tk-c1','m78','GLU(n7,n8)') + '</div>' +
+          '<div class="tree-arr">&darr; merge root (Level 2)</div>' +
+          '<div class="tree-lv">' + tokB('tk-s1','S1','summary') + '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="slabel" style="margin-top:18px">GLU Merge &mdash; формула</div>' +
+    '<div class="two-col">' +
+      '<div class="fbox">combined = concat(left, right) <span class="fb"># 2d</span>\n\nval      = W_val  &middot; combined\ngate     = &sigma;(W_gate &middot; combined)\nmerged   = RMSNorm(val &odot; gate)\n\nres_gate = &sigma;(W_res &middot; combined)\nresidual = (left + right) / 2\n\n<span class="fa">out = res_gate &odot; merged\n    + (1-res_gate) &odot; residual</span></div>' +
+      '<div style="display:flex;flex-direction:column;gap:10px">' +
+        '<div class="ann"><b>res_gate</b> &mdash; страховка. В начале W_val случаен. res_gate&rarr;0 = просто усредни. Постепенно модель учится использовать learned merge.</div>' +
+        '<div class="ann teal"><b>Shared weights:</b> W_val, W_gate, W_res одни для ВСЕХ уровней. Merge токенов &equiv; merge документов. Параметры не растут с n.</div>' +
+      '</div>' +
+    '</div>';
+}
+
+function s5() {
+  return '<div class="slabel">S0 и S1 готовы &rarr; строим causal global context</div>' +
+    '<div class="ctx-flow">' +
+      '<div class="ctx-blk">' + tokB('tk-s0','S0','') + '<div class="ctx-lbl">chunk 0</div></div>' +
+      '<div class="ctx-blk">' + tokB('tk-s1','S1','') + '<div class="ctx-lbl">chunk 1</div></div>' +
+      '<div style="flex:1;min-width:16px;height:1px;background:var(--border)"></div>' +
+      '<div style="font-size:11px;color:var(--violet);text-align:center">cumsum<br>&divide; counts<br>shift right</div>' +
+      '<div style="flex:1;min-width:16px;height:1px;background:var(--border)"></div>' +
+      '<div class="ctx-blk">' + tokB('tk-zero','0','') + '<div class="ctx-lbl">ctx[0]</div><div class="ctx-sub">no past</div></div>' +
+      '<div class="ctx-arr">&rarr;</div>' +
+      '<div class="ctx-blk">' + tokB('tk-ctx','S0','') + '<div class="ctx-lbl">ctx[1]</div><div class="ctx-sub">mean(S0)</div></div>' +
+    '</div>' +
+    '<div class="warn"><b>&#9888; Каузальность:</b> ctx[i] = mean(S0..S_{i-1}). Чанк i <b>не видит свой S_i</b> &mdash; только прошлое.</div>' +
+    '<div class="slabel" style="margin-top:14px">Инжекция в каждый токен чанка</div>' +
+    '<div class="two-col">' +
+      '<div class="fbox">n_t\' = n_t + W_global &middot; ctx[t // K]\n\n<span class="fa">Chunk 0 (t=0..3):  ctx = 0</span>   <span class="fg">&larr; no past</span>\n<span class="fg">Chunk 1 (t=4..7):  ctx = S0</span>  <span class="fg">&larr; knows past</span></div>' +
+      '<div class="ann violet"><b>Два контекста в одной модели:</b><br><br><b>Локальный</b> &mdash; CausalConv, 2 токена назад<br><br><b>Глобальный</b> &mdash; W_global&middot;ctx, summary всех прошлых чанков</div>' +
+    '</div>';
+}
+
+function s6() {
+  var nodes = '';
+  for (var i = 0; i < 8; i++) {
+    if (i === 4) nodes += '<div class="cdiv"></div>';
+    nodes += tok(i < 4 ? 'tk-node' : 'tk-ctx', 'n\''+(i+1), '');
+  }
+  var logits = '';
+  for (var i = 0; i < 8; i++) {
+    if (i === 4) logits += '<div class="cdiv"></div>';
+    logits += tok('tk-logit', 'y'+(i+1), 'p(t'+(i+2)+')');
+  }
+  return '<div class="slabel">n\'_t &rarr; W_predict &rarr; логиты над словарём</div>' +
+    '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px">' +
+      '<div><div style="font-size:9px;color:var(--muted);margin-bottom:6px">n\'_t (after context)</div>' +
+        '<div class="tok-row">' + nodes + '</div></div>' +
+      '<div style="font-size:22px;color:var(--muted)">&rarr;</div>' +
+      '<div><div style="font-size:9px;color:var(--muted);margin-bottom:6px">logits</div>' +
+        '<div class="tok-row">' + logits + '</div></div>' +
+    '</div>' +
+    '<div class="fbox" style="margin-bottom:18px">logits = W_predict &middot; output  <span class="fg"># (B, T, |V|)</span>\nloss   = CrossEntropy(\n    logits.view(-1, V),     <span class="fb"># (B*T, V)</span>\n    targets.view(-1)        <span class="fb"># (B*T,)</span>\n)\n<span class="fa"># 8 predictions per pass vs 1 in V1 (One-to-One)</span></div>' +
+    '<div class="rg">' +
+      '<div class="rc" style="border-color:rgba(0,229,200,.3)"><div class="rc-val" style="color:var(--teal)">47.2%</div><div class="rc-lbl">WAT V3</div><div class="rc-sub">Seq2Seq ep.30</div></div>' +
+      '<div class="rc" style="border-color:rgba(255,64,129,.3)"><div class="rc-val" style="color:var(--rose)">36.3%</div><div class="rc-lbl">Transformer</div><div class="rc-sub">Seq2Seq ep.30</div></div>' +
+      '<div class="rc" style="border-color:rgba(255,179,0,.3)"><div class="rc-val" style="color:var(--amber)">~9s</div><div class="rc-lbl">WAT / epoch</div><div class="rc-sub">vs 18s Trans</div></div>' +
+      '<div class="rc" style="border-color:rgba(41,121,255,.3)"><div class="rc-val" style="color:var(--blue)">+11pp</div><div class="rc-lbl">WAT vs Trans</div><div class="rc-sub">equal params</div></div>' +
+    '</div>' +
+    '<div class="two-col" style="margin-top:14px">' +
+      '<div class="cmp"><div class="cmp-hdr" style="background:rgba(41,121,255,.12);color:var(--blue)">WAT V3</div>' +
+        '<div class="cmp-row"><span class="cmp-key">Complexity</span><span class="good">O(n log K)</span></div>' +
+        '<div class="cmp-row"><span class="cmp-key">Memory</span><span class="good">O(n)</span></div>' +
+        '<div class="cmp-row"><span class="cmp-key">Attention matrix</span><span class="good">None</span></div>' +
+        '<div class="cmp-row"><span class="cmp-key">Accuracy (Shakespeare)</span><span class="good">47.2%</span></div>' +
+      '</div>' +
+      '<div class="cmp"><div class="cmp-hdr" style="background:rgba(255,64,129,.1);color:var(--rose)">Transformer</div>' +
+        '<div class="cmp-row"><span class="cmp-key">Complexity</span><span class="bad">O(n&sup2;d)</span></div>' +
+        '<div class="cmp-row"><span class="cmp-key">Memory</span><span class="bad">O(n&sup2;)</span></div>' +
+        '<div class="cmp-row"><span class="cmp-key">Attention matrix</span><span class="bad">n&times;n softmax</span></div>' +
+        '<div class="cmp-row"><span class="cmp-key">Accuracy (Shakespeare)</span><span class="bad">36.3%</span></div>' +
+      '</div>' +
+    '</div>';
+}
+
+var STEPS = [s0, s1, s2, s3, s4, s5, s6];
+var LABELS = ['Embed','Conv','Gate','Chunks','Tree','Context','Output'];
+var TITLES = [
+  'Embedding + Positional Encoding',
+  'CausalConv1d &mdash; локальный контекст',
+  'Input Gate &mdash; адаптивная фильтрация',
+  'Разбивка на чанки &mdash; unfold',
+  'Binary Tree Reduction &mdash; GLU Merge',
+  'Global Context &mdash; каузальное среднее',
+  'Output &mdash; предсказание на каждой позиции'
+];
+var BADGES = ['input layer','kernel=3 left-pad','GLU-style','O(n log K)','shared weights','causal','Seq2Seq'];
+var COLORS = ['var(--blue)','var(--teal)','var(--amber)','var(--teal)','var(--blue)','var(--violet)','var(--amber)'];
+var CDIMS  = ['rgba(41,121,255,.15)','rgba(0,229,200,.12)','rgba(255,179,0,.12)','rgba(0,229,200,.12)','rgba(41,121,255,.15)','rgba(185,103,255,.12)','rgba(255,179,0,.12)'];
+
+function render() {
+  document.getElementById('prog').style.width = ((S+1)/N*100) + '%';
+
+  var nav = '';
+  for (var i = 0; i < N; i++) {
+    var cls = 'snav-btn' + (i === S ? ' active' : i < S ? ' done' : '');
+    nav += '<button class="' + cls + '" onclick="goTo(' + i + ')">' +
+      '<span style="font-size:14px">' + (i+1) + '</span>' + LABELS[i] + '</button>';
+  }
+  document.getElementById('snav').innerHTML = nav;
+
+  var html = '<div class="stage">' +
+    '<div class="stage-hdr">' +
+      '<div class="stage-num" style="background:' + CDIMS[S] + ';color:' + COLORS[S] + '">' + (S+1) + '</div>' +
+      '<div class="stage-title">' + TITLES[S] + '</div>' +
+      '<div class="stage-badge" style="background:' + CDIMS[S] + ';color:' + COLORS[S] + '">' + BADGES[S] + '</div>' +
+    '</div>' +
+    '<div class="stage-body">' + STEPS[S]() + '</div>' +
+    '</div>';
+  document.getElementById('stage').innerHTML = html;
+
+  document.getElementById('btnP').disabled = (S === 0);
+  document.getElementById('btnN').innerHTML = S === N-1 ? '&#8634; Заново' : 'Далее &rarr;';
+}
+
+function goTo(i) {
+  if (i >= 0 && i < N) { S = i; render(); }
+}
+
+function goNav(d) {
+  if (S === N-1 && d === 1) { S = 0; render(); return; }
+  goTo(S + d);
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'ArrowRight') goNav(1);
+  if (e.key === 'ArrowLeft')  goNav(-1);
+});
+
+render();
+</script>
+</body>
+</html>
