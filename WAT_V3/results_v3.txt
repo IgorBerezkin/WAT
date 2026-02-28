@@ -1,0 +1,137 @@
+============================================================
+SHAKESPEARE NEXT TOKEN - LONG SEQUENCES (512+) - Seq2Seq
+============================================================
+Device: cuda
+Dataset: 1,115,394 chars, Vocab: 65
+Train: 0 - 50,000 (50,000 samples)
+Test:  50,512 - 55,512 (5,000 samples)
+
+WAT embed=40: 105,065 params
+Transformer embed=36: 110,513 params
+Epochs: 30, LR: 0.0003, Weight Decay: 0.01
+
+============================================================
+--- Training WAT ---
+============================================================
+
+  Training WAT...
+/mnt/d/CODE/else/opencode/WAT_testing/WAT-architecture/benchmarks/shakespeare_long_512.py:137: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scaler = torch.cuda.amp.GradScaler()
+/mnt/d/CODE/else/opencode/WAT_testing/WAT-architecture/benchmarks/shakespeare_long_512.py:151: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+/mnt/d/CODE/else/opencode/WAT_testing/WAT-architecture/venv/lib/python3.12/site-packages/torch/nn/functional.py:2954: UserWarning: Mismatch dtype between input and weight: input dtype = c10::Half, weight dtype = float, Cannot dispatch to fused implementation. (Triggered internally at /pytorch/aten/src/ATen/native/layer_norm.cpp:344.)
+  return torch.rms_norm(input, normalized_shape, weight, eps)
+    Epoch 1/30: loss=2.6810, acc=0.3540, time=15.9s
+    Epoch 2/30: loss=2.0868, acc=0.4020, time=8.7s
+    Epoch 3/30: loss=1.9223, acc=0.4267, time=8.2s
+    Epoch 4/30: loss=1.8296, acc=0.4399, time=8.3s
+    Epoch 5/30: loss=1.7703, acc=0.4480, time=11.2s
+    Epoch 6/30: loss=1.7302, acc=0.4527, time=8.5s
+    Epoch 7/30: loss=1.7016, acc=0.4571, time=8.4s
+    Epoch 8/30: loss=1.6800, acc=0.4600, time=10.6s
+    Epoch 9/30: loss=1.6633, acc=0.4624, time=8.9s
+    Epoch 10/30: loss=1.6499, acc=0.4652, time=13.0s
+    Epoch 11/30: loss=1.6389, acc=0.4660, time=11.4s
+    Epoch 12/30: loss=1.6298, acc=0.4665, time=9.6s
+    Epoch 13/30: loss=1.6222, acc=0.4676, time=8.7s
+    Epoch 14/30: loss=1.6158, acc=0.4689, time=8.6s
+    Epoch 15/30: loss=1.6103, acc=0.4685, time=9.3s
+
+    === Generated text after epoch 15 ===
+    First the and noblend, the the me dist; to keep:
+That
+any the good foxell, will.
+
+First of the stateed, I with,
+Leie
+We collower, to it the
+brothat saw the rever have me make not shall he were--' who reve sue; mick me, worse the honour ment;
+Where here that well sworn the wor his the here the was down:
+L
+    === End of generation ===
+
+    Epoch 16/30: loss=1.6055, acc=0.4699, time=10.7s
+    Epoch 17/30: loss=1.6015, acc=0.4705, time=9.3s
+    Epoch 18/30: loss=1.5979, acc=0.4710, time=9.1s
+    Epoch 19/30: loss=1.5949, acc=0.4709, time=8.8s
+    Epoch 20/30: loss=1.5923, acc=0.4705, time=11.0s
+
+    === Generated text after epoch 20 ===
+    First Soo, that we preford power. Seneneneralsonnere.
+
+First Corioli word: your barnee our of all ther and forminded:
+To Rome:
+Know theary Marcius!
+For therattentratureshipmeriolding eart be stadam. We in alron.
+
+MARCIUS:
+Ebever thout Cition.
+
+MARCIUS:
+So it whethe prets; he
+rake tar; and follone thang t
+    === End of generation ===
+
+    Epoch 21/30: loss=1.5901, acc=0.4710, time=9.0s
+    Epoch 22/30: loss=1.5883, acc=0.4710, time=8.7s
+    Epoch 23/30: loss=1.5869, acc=0.4715, time=9.0s
+    Epoch 24/30: loss=1.5856, acc=0.4712, time=11.9s
+    Epoch 25/30: loss=1.5847, acc=0.4715, time=8.5s
+    Epoch 26/30: loss=1.5839, acc=0.4719, time=8.3s
+    Epoch 27/30: loss=1.5833, acc=0.4719, time=11.1s
+    Epoch 28/30: loss=1.5829, acc=0.4721, time=9.0s
+    Epoch 29/30: loss=1.5825, acc=0.4718, time=8.4s
+    Epoch 30/30: loss=1.5822, acc=0.4720, time=8.7s
+
+    === Generated text after epoch 30 ===
+    First newinders pare shous and there,
+Our gods, thoubt there to lear his are leashe cour made's may outchare han as it in the rupher come teecontree their for one you worshy beasiding at such mall the power:
+I must thould peakering
+Auring inteen:
+And come onces den a shalf the a befestron, what at
+As the
+    === End of generation ===
+
+
+============================================================
+--- Training Transformer  ---
+============================================================
+
+  Training Transformer...
+    Epoch 1/30: loss=2.8730, acc=0.2787, time=19.7s
+    Epoch 2/30: loss=2.4881, acc=0.2854, time=16.6s
+    Epoch 3/30: loss=2.4361, acc=0.2878, time=19.7s
+    Epoch 4/30: loss=2.4094, acc=0.2907, time=19.4s
+    Epoch 5/30: loss=2.3889, acc=0.2938, time=17.4s
+    Epoch 6/30: loss=2.3733, acc=0.2969, time=19.0s
+    Epoch 7/30: loss=2.3581, acc=0.3017, time=17.3s
+    Epoch 8/30: loss=2.3401, acc=0.3079, time=19.3s
+    Epoch 9/30: loss=2.3192, acc=0.3156, time=16.7s
+    Epoch 10/30: loss=2.2992, acc=0.3209, time=19.3s
+    Epoch 11/30: loss=2.2816, acc=0.3275, time=16.4s
+    Epoch 12/30: loss=2.2660, acc=0.3316, time=19.4s
+    Epoch 13/30: loss=2.2519, acc=0.3366, time=16.7s
+    Epoch 14/30: loss=2.2389, acc=0.3414, time=19.4s
+    Epoch 15/30: loss=2.2276, acc=0.3440, time=16.4s
+    Epoch 16/30: loss=2.2175, acc=0.3478, time=19.6s
+    Epoch 17/30: loss=2.2088, acc=0.3493, time=16.6s
+    Epoch 18/30: loss=2.2010, acc=0.3512, time=19.5s
+    Epoch 19/30: loss=2.1939, acc=0.3541, time=16.5s
+    Epoch 20/30: loss=2.1877, acc=0.3545, time=20.1s
+    Epoch 21/30: loss=2.1821, acc=0.3567, time=18.9s
+    Epoch 22/30: loss=2.1773, acc=0.3573, time=17.8s
+    Epoch 23/30: loss=2.1729, acc=0.3588, time=19.9s
+    Epoch 24/30: loss=2.1691, acc=0.3595, time=17.4s
+    Epoch 25/30: loss=2.1661, acc=0.3604, time=20.2s
+    Epoch 26/30: loss=2.1633, acc=0.3615, time=18.0s
+    Epoch 27/30: loss=2.1611, acc=0.3617, time=18.4s
+    Epoch 28/30: loss=2.1596, acc=0.3621, time=17.0s
+    Epoch 29/30: loss=2.1586, acc=0.3624, time=19.5s
+    Epoch 30/30: loss=2.1574, acc=0.3626, time=17.3s
+
+============================================================
+RESULTS - Shakespeare Next Token (512)
+============================================================
+WAT:         47.21% (105,065 params)
+Transformer: 36.26% (110,513 params)
+============================================================
