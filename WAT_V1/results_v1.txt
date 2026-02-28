@@ -1,0 +1,146 @@
+============================================================
+SHAKESPEARE NEXT TOKEN - LONG SEQUENCES (512+) - One-to-One
+============================================================
+Device: cuda
+Dataset: 1,115,394 chars, Vocab: 65
+Train: 0 - 50,000 (50,000 samples)
+Test:  50,512 - 55,512 (5,000 samples)
+
+WAT embed=40: 106,025 params
+Transformer embed=36: 110,513 params
+Epochs: 60, LR: 0.0003
+
+--- Training WAT ---
+
+  Training WAT...
+    Epoch 1/60: loss=2.9781, acc=0.2850, time=11.4s
+    Epoch 2/60: loss=2.5209, acc=0.3213, time=10.0s
+    Epoch 3/60: loss=2.3787, acc=0.3396, time=11.8s
+    Epoch 4/60: loss=2.3022, acc=0.3556, time=10.4s
+    Epoch 5/60: loss=2.2438, acc=0.3661, time=10.6s
+    Epoch 6/60: loss=2.2043, acc=0.3792, time=11.8s
+    Epoch 7/60: loss=2.1662, acc=0.3866, time=10.7s
+    Epoch 8/60: loss=2.1371, acc=0.3953, time=10.6s
+    Epoch 9/60: loss=2.1148, acc=0.3928, time=11.7s
+    Epoch 10/60: loss=2.0944, acc=0.3984, time=10.7s
+    Epoch 11/60: loss=2.0751, acc=0.4084, time=10.7s
+    Epoch 12/60: loss=2.0586, acc=0.4095, time=11.6s
+    Epoch 13/60: loss=2.0457, acc=0.4124, time=10.6s
+    Epoch 14/60: loss=2.0308, acc=0.4129, time=10.6s
+    Epoch 15/60: loss=2.0171, acc=0.4149, time=11.6s
+    Epoch 16/60: loss=2.0060, acc=0.4133, time=10.6s
+    Epoch 17/60: loss=1.9936, acc=0.4171, time=10.5s
+    Epoch 18/60: loss=1.9857, acc=0.4216, time=11.6s
+    Epoch 19/60: loss=1.9757, acc=0.4234, time=10.6s
+    Epoch 20/60: loss=1.9646, acc=0.4265, time=10.5s
+    Epoch 21/60: loss=1.9543, acc=0.4287, time=11.5s
+    Epoch 22/60: loss=1.9476, acc=0.4265, time=11.2s
+    Epoch 23/60: loss=1.9401, acc=0.4296, time=10.5s
+    Epoch 24/60: loss=1.9305, acc=0.4345, time=11.1s
+    Epoch 25/60: loss=1.9285, acc=0.4305, time=10.2s
+    Epoch 26/60: loss=1.9190, acc=0.4367, time=10.0s
+    Epoch 27/60: loss=1.9137, acc=0.4336, time=10.2s
+    Epoch 28/60: loss=1.9073, acc=0.4392, time=11.2s
+    Epoch 29/60: loss=1.9020, acc=0.4416, time=10.1s
+    Epoch 30/60: loss=1.8968, acc=0.4345, time=10.1s
+    Epoch 31/60: loss=1.8904, acc=0.4401, time=11.0s
+    Epoch 32/60: loss=1.8856, acc=0.4396, time=9.9s
+    Epoch 33/60: loss=1.8829, acc=0.4414, time=10.1s
+    Epoch 34/60: loss=1.8794, acc=0.4454, time=11.1s
+    Epoch 35/60: loss=1.8760, acc=0.4392, time=10.1s
+    Epoch 36/60: loss=1.8684, acc=0.4418, time=10.0s
+    Epoch 37/60: loss=1.8673, acc=0.4454, time=11.2s
+    Epoch 38/60: loss=1.8665, acc=0.4436, time=10.1s
+    Epoch 39/60: loss=1.8620, acc=0.4416, time=10.1s
+    Epoch 40/60: loss=1.8593, acc=0.4492, time=11.0s
+    Epoch 41/60: loss=1.8557, acc=0.4456, time=10.1s
+    Epoch 42/60: loss=1.8538, acc=0.4467, time=10.0s
+    Epoch 43/60: loss=1.8531, acc=0.4463, time=10.1s
+    Epoch 44/60: loss=1.8493, acc=0.4465, time=11.0s
+    Epoch 45/60: loss=1.8467, acc=0.4490, time=10.1s
+    Epoch 46/60: loss=1.8445, acc=0.4485, time=10.0s
+    Epoch 47/60: loss=1.8437, acc=0.4510, time=11.0s
+    Epoch 48/60: loss=1.8438, acc=0.4476, time=10.0s
+    Epoch 49/60: loss=1.8413, acc=0.4445, time=10.1s
+    Epoch 50/60: loss=1.8444, acc=0.4496, time=11.1s
+    Epoch 51/60: loss=1.8412, acc=0.4483, time=10.0s
+    Epoch 52/60: loss=1.8398, acc=0.4472, time=10.0s
+    Epoch 53/60: loss=1.8395, acc=0.4492, time=11.1s
+    Epoch 54/60: loss=1.8391, acc=0.4499, time=10.0s
+    Epoch 55/60: loss=1.8378, acc=0.4510, time=10.0s
+    Epoch 56/60: loss=1.8359, acc=0.4472, time=10.1s
+    Epoch 57/60: loss=1.8378, acc=0.4494, time=11.2s
+    Epoch 58/60: loss=1.8359, acc=0.4476, time=9.9s
+    Epoch 59/60: loss=1.8381, acc=0.4479, time=10.1s
+    Epoch 60/60: loss=1.8325, acc=0.4490, time=11.7s
+
+--- Training Transformer ---
+
+  Training Trans...
+    Epoch 1/60: loss=3.0101, acc=0.2705, time=100.4s
+    Epoch 2/60: loss=2.6134, acc=0.2741, time=101.2s
+    Epoch 3/60: loss=2.5330, acc=0.2801, time=103.7s
+    Epoch 4/60: loss=2.4985, acc=0.2812, time=102.4s
+    Epoch 5/60: loss=2.4803, acc=0.2836, time=103.8s
+    Epoch 6/60: loss=2.4672, acc=0.2848, time=103.8s
+    Epoch 7/60: loss=2.4553, acc=0.2834, time=102.9s
+    Epoch 8/60: loss=2.4464, acc=0.2877, time=102.3s
+    Epoch 9/60: loss=2.4011, acc=0.3099, time=100.0s
+    Epoch 10/60: loss=2.3552, acc=0.3251, time=101.1s
+    Epoch 11/60: loss=2.3242, acc=0.3309, time=100.3s
+    Epoch 12/60: loss=2.2997, acc=0.3327, time=99.9s
+    Epoch 13/60: loss=2.2752, acc=0.3478, time=101.1s
+    Epoch 14/60: loss=2.2498, acc=0.3518, time=99.6s
+    Epoch 15/60: loss=2.2233, acc=0.3581, time=99.9s
+    Epoch 16/60: loss=2.1960, acc=0.3734, time=99.4s
+    Epoch 17/60: loss=2.1734, acc=0.3737, time=100.5s
+    Epoch 18/60: loss=2.1502, acc=0.3652, time=99.0s
+    Epoch 19/60: loss=2.1298, acc=0.3812, time=98.6s
+    Epoch 20/60: loss=2.1138, acc=0.3844, time=98.5s
+    Epoch 21/60: loss=2.0977, acc=0.3919, time=98.6s
+    Epoch 22/60: loss=2.0861, acc=0.3951, time=100.7s
+    Epoch 23/60: loss=2.0729, acc=0.4008, time=100.9s
+    Epoch 24/60: loss=2.0569, acc=0.4020, time=100.0s
+    Epoch 25/60: loss=2.0472, acc=0.4022, time=100.1s
+    Epoch 26/60: loss=2.0372, acc=0.4044, time=100.1s
+    Epoch 27/60: loss=2.0255, acc=0.4086, time=99.4s
+    Epoch 28/60: loss=2.0178, acc=0.4129, time=100.2s
+    Epoch 29/60: loss=2.0109, acc=0.4127, time=100.2s
+    Epoch 30/60: loss=1.9997, acc=0.4133, time=99.5s
+    Epoch 31/60: loss=1.9964, acc=0.4135, time=99.4s
+    Epoch 32/60: loss=1.9905, acc=0.4131, time=99.9s
+    Epoch 33/60: loss=1.9791, acc=0.4173, time=99.7s
+    Epoch 34/60: loss=1.9789, acc=0.4171, time=100.9s
+    Epoch 35/60: loss=1.9699, acc=0.4149, time=99.3s
+    Epoch 36/60: loss=1.9679, acc=0.4164, time=100.4s
+    Epoch 37/60: loss=1.9633, acc=0.4169, time=99.3s
+    Epoch 38/60: loss=1.9576, acc=0.4187, time=99.2s
+    Epoch 39/60: loss=1.9528, acc=0.4238, time=99.1s
+    Epoch 40/60: loss=1.9516, acc=0.4202, time=99.9s
+    Epoch 41/60: loss=1.9458, acc=0.4222, time=99.6s
+    Epoch 42/60: loss=1.9418, acc=0.4231, time=100.3s
+    Epoch 43/60: loss=1.9417, acc=0.4229, time=100.2s
+    Epoch 44/60: loss=1.9361, acc=0.4262, time=103.2s
+    Epoch 45/60: loss=1.9348, acc=0.4218, time=103.4s
+    Epoch 46/60: loss=1.9320, acc=0.4236, time=104.4s
+    Epoch 47/60: loss=1.9296, acc=0.4247, time=103.5s
+    Epoch 48/60: loss=1.9280, acc=0.4240, time=100.0s
+    Epoch 49/60: loss=1.9280, acc=0.4247, time=100.4s
+    Epoch 50/60: loss=1.9240, acc=0.4242, time=100.5s
+    Epoch 51/60: loss=1.9228, acc=0.4254, time=100.7s
+    Epoch 52/60: loss=1.9219, acc=0.4234, time=102.6s
+    Epoch 53/60: loss=1.9199, acc=0.4256, time=101.6s
+    Epoch 54/60: loss=1.9195, acc=0.4249, time=99.8s
+    Epoch 55/60: loss=1.9209, acc=0.4251, time=99.4s
+    Epoch 56/60: loss=1.9199, acc=0.4258, time=100.1s
+    Epoch 57/60: loss=1.9225, acc=0.4276, time=101.6s
+    Epoch 58/60: loss=1.9168, acc=0.4271, time=100.3s
+    Epoch 59/60: loss=1.9154, acc=0.4283, time=99.5s
+    Epoch 60/60: loss=1.9145, acc=0.4258, time=100.8s
+
+============================================================
+RESULTS - Shakespeare Next Token (512)
+============================================================
+WAT:         45.10% (106,025 params)
+Transformer: 42.83% (110,513 params)
+============================================================
