@@ -1,3 +1,5 @@
+## [Paper](https://arxiv.org/abs/2603.00812)
+
 ### USE THIS FOR TESTING ON YOUR DEVICE
 1. Create venv
 ```
