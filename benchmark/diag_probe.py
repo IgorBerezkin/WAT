@@ -134,7 +134,6 @@ def run():
             dst.append(r)
     a_rd = linear_probe(torch.cat(rd_tr), ytr, torch.cat(rd_te), yte)
     print(f"{'TR':<6} {'—':>10} {a_rd*100:>13.1f}%")
-    print("\nИнтерпретация — в шапке файла.")
 
 
 if __name__ == "__main__":
