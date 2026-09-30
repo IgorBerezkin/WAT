@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from datetime import datetime
-from WAT_v2 import WATModel
+from wat.models.wat_v3 import WATModel
 
 np.random.seed(42)
 torch.manual_seed(42)
@@ -30,8 +30,10 @@ class ShakespeareSeq2SeqDataset(Dataset):
     def __init__(self, data, seq_len):
         self.data = torch.tensor(data, dtype=torch.long)
         self.seq_len = seq_len
+
     def __len__(self):
         return len(self.data) - self.seq_len - 1
+    
     def __getitem__(self, idx):
         x = self.data[idx : idx + self.seq_len]
         y = self.data[idx + 1 : idx + self.seq_len + 1]
@@ -136,6 +138,8 @@ def main():
     print("="*60)
     print("SHAKESPEARE NEXT TOKEN - LONG SEQUENCES (512+)")
     print("="*60)
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = True
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
     text, n_chars = load_shakespeare()
