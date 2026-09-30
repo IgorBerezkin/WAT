@@ -12,9 +12,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(HERE, "data")
-OUT_DIR = os.path.join(HERE, "results_lab")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.join(ROOT, "data")
+OUT_DIR = os.path.join(ROOT, "results", "benchmark", "lab")
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -1088,7 +1088,7 @@ def main():
         f.write(summary)
     print("\n" + summary)
     print(f"\nГотово за {results['total_time_s']/60:.1f} мин. "
-          f"results_lab/results.json, summary.md")
+          f"results/benchmark/lab/results.json, summary.md")
 
 
 if __name__ == "__main__":

@@ -9,8 +9,8 @@ from wat_lab import (WATBackboneX, WATBlockX, CausalSelfAttention,
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 K0 = 32
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                   "results_night")
+OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                   "results", "benchmark", "night")
 os.makedirs(OUT, exist_ok=True)
 RES_PATH = os.path.join(OUT, "results.json")
 
@@ -501,4 +501,4 @@ if __name__ == "__main__":
     print(f"БЛОК X СТАРТ {time.strftime('%H:%M:%S')} device={DEVICE}")
     run_block_x()
     print(f"Блок X готов за {(time.time()-t0)/3600:.1f} ч. "
-          f"Результаты дописаны в results_night/results.json")
+          f"Результаты дописаны в results/benchmark/night/results.json")

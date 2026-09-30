@@ -9,8 +9,8 @@ from wat_lab import (WATBackboneX, WATBlockX, LMModel, make_copy, make_recall,
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 K = 32
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                   "results_night")
+OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                   "results", "benchmark", "night")
 os.makedirs(OUT, exist_ok=True)
 RES_PATH = os.path.join(OUT, "results.json")
 RESULTS = json.load(open(RES_PATH, encoding="utf-8")) \
@@ -304,4 +304,4 @@ if __name__ == "__main__":
         print(_tb.format_exc(), flush=True)
     write_summary()
     print(f"\nГОТОВО за {(time.time()-t_start)/3600:.1f} ч. "
-          f"results_night/summary.md + results.json")
+          f"results/benchmark/night/summary.md + results.json")

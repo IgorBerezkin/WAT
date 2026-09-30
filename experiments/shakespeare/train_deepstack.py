@@ -1,3 +1,4 @@
+import os
 import time
 import warnings
 import numpy as np
@@ -13,13 +14,18 @@ np.random.seed(42)
 torch.manual_seed(42)
 
 
-def load_shakespeare(path="/tmp/shakespeare.txt"):
+DATA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         os.pardir, os.pardir, "data", "shakespeare.txt")
+
+
+def load_shakespeare(path=DATA_PATH):
     try:
         with open(path) as f:
             text = f.read()
     except:
         import urllib.request
         url = 'https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt'
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         urllib.request.urlretrieve(url, path)
         with open(path) as f:
             text = f.read()
