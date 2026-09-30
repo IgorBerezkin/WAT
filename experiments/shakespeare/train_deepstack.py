@@ -1,13 +1,12 @@
+import time
+import warnings
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-import time
 from wat.models.wat_deepstack import WATDeepStackV1, count_params, find_embed_dim, generate_text
 from wat.models.transformer_baseline import TransformerBaseline, find_embed_dim_transformer
 
-import warnings
 warnings.filterwarnings("ignore", message="Mismatch dtype")
 
 np.random.seed(42)
@@ -47,7 +46,7 @@ class ShakespeareDataset(Dataset):
         return x, y
 
 
-def train(model, train_loader, test_loader, epochs, lr, weight_decay, device, vocab, idx_to_char, n_layers, chunk_size, dropout):
+def train(model, train_loader, test_loader, epochs, lr, weight_decay, device, vocab, idx_to_char):
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-5)
@@ -63,9 +62,6 @@ def train(model, train_loader, test_loader, epochs, lr, weight_decay, device, vo
     for epoch in range(epochs):
         epoch_start = time.time()
         model.train()
-        train_loss = 0
-        num_batches = 0
-        train_tokens = 0
         train_loss_sum = 0
         train_tokens = 0
 
@@ -231,7 +227,7 @@ def main():
 
     best_val_acc, best_val_loss, best_epoch, history = train(
         model, train_loader, test_loader, epochs, lr, weight_decay,
-        device, vocab, idx_to_char, n_layers, chunk_size, dropout
+        device, vocab, idx_to_char
     )
 
     print("\n" + "=" * 80)
@@ -261,7 +257,7 @@ def main():
 
     t_best_val_acc, t_best_val_loss, t_best_epoch, t_history = train(
         trans_model, train_loader, test_loader, epochs, lr, weight_decay,
-        device, vocab, idx_to_char, n_layers, chunk_size, dropout
+        device, vocab, idx_to_char
     )
 
     print("\n" + "=" * 80)

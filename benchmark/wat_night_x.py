@@ -1,11 +1,10 @@
-import json, math, os, sys, time, traceback, types
-sys.path.insert(0, ".")
+import json, math, os, time, traceback, types
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-from wat_lab import (WATBackboneX, WATBlockX, GLUMerge, CausalSelfAttention,
+from wat_lab import (WATBackboneX, WATBlockX, CausalSelfAttention,
                      LMModel, make_copy)
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")

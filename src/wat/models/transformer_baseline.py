@@ -1,4 +1,3 @@
-import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -128,16 +127,3 @@ def find_embed_dim_transformer(
         except Exception:
             continue
     return best_ed, best_n
-
-
-if __name__ == "__main__":
-    vocab, B, T = 65, 2, 512
-    ed, n = find_embed_dim_transformer(vocab, 50_000, n_layers=1)
-    model = TransformerBaseline(vocab, ed, n_layers=1)
-    dummy = torch.randint(0, vocab, (B, T))
-    out   = model(dummy)
-    print(f"embed_dim : {ed}")
-    print(f"params    : {n:,}")
-    print(f"output    : {out.shape}  expected (2, 512, {vocab})")
-    assert out.shape == (B, T, vocab)
-    print("[OK]")

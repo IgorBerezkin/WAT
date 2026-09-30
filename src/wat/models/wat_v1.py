@@ -1,8 +1,6 @@
-import numpy as np
 import torch
 import torch.nn as nn
 
-np.random.seed(42)
 
 class WATModel(nn.Module):
     def __init__(self, vocab_size: int, embed_dim: int, max_len: int = 2048):
@@ -47,38 +45,3 @@ class WATModel(nn.Module):
         last    = nodes_past[:, -1, :]
         context = torch.cat([root, last], dim=-1)
         return self.predict(context)
-
-class TransformerBaseline(nn.Module):
-    def __init__(self, vocab_size: int, embed_dim: int,
-                 n_heads: int = 4, max_len: int = 2048):
-        super().__init__()
-        self.embedding    = nn.Embedding(vocab_size, embed_dim)
-        self.pos_encoding = nn.Embedding(max_len, embed_dim)
-        encoder_layer     = nn.TransformerEncoderLayer(
-            d_model=embed_dim, nhead=n_heads,
-            dim_feedforward=embed_dim * 4, batch_first=True
-        )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=2)
-        self.predict     = nn.Linear(embed_dim, vocab_size)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        seq_len   = x.size(1)
-        positions = torch.arange(seq_len, device=x.device).unsqueeze(0)
-        x = self.embedding(x) + self.pos_encoding(positions)
-        mask = nn.Transformer.generate_square_subsequent_mask(seq_len).to(x.device)
-        x = self.transformer(x, mask=mask)
-        return self.predict(x[:, -1, :])
-
-def count_params(model: nn.Module) -> int:
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-def find_embed_dim(model_class, vocab_size: int,
-                   target_params: int, max_len: int = 2048) -> tuple:
-    best_ed, best_n = None, float('inf')
-    for ed in range(8, 256, 4):
-        model = model_class(vocab_size, ed)
-        n     = count_params(model)
-        if abs(n - target_params) < abs(best_n - target_params):
-            best_n  = n
-            best_ed = ed
-    return best_ed, best_n

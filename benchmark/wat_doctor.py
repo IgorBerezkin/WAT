@@ -1,5 +1,4 @@
-import argparse, sys, time, types
-sys.path.insert(0, ".")
+import argparse, time, types
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

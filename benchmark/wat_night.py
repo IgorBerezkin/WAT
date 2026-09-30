@@ -1,5 +1,4 @@
-import json, os, sys, time, traceback, types
-sys.path.insert(0, ".")
+import json, os, time, traceback, types
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

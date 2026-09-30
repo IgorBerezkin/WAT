@@ -244,32 +244,3 @@ def generate_text(
                 current = current[:, -1024:]
 
     return ''.join(idx_to_char.get(t, '?') for t in current[0].cpu().tolist())
-
-
-if __name__ == "__main__":
-    print("=" * 60)
-    print("WAT DeepStack V1 — Architecture Check")
-    print("=" * 60)
-
-    VOCAB   = 65
-    B, T, D = 2, 512, 0
-    TARGET  = 500_000
-
-    ed, n_params = find_embed_dim(VOCAB, TARGET, n_layers=2)
-    model = WATDeepStackV1(vocab_size=VOCAB, embed_dim=ed, n_layers=2)
-
-    print(f"\nEmbed dim: {ed}")
-    print(f"Params: {n_params:,}  (target: {TARGET:,})")
-    print(f"\nParam breakdown:")
-    for k, v in model.param_breakdown().items():
-        print(f"  {k:<20} {v:>10,}")
-
-    dummy = torch.randint(0, VOCAB, (2, 512))
-    out   = model(dummy)
-    print(f"\nInput:  {dummy.shape}")
-    print(f"Output: {out.shape}")
-    print(f"Expected: (2, 512, {VOCAB})")
-    assert out.shape == (2, 512, VOCAB), "Shape mismatch!"
-
-    print("\n[OK] All checks passed")
-    print("=" * 60)

@@ -1,5 +1,4 @@
-import sys, math, types
-sys.path.insert(0, ".")
+import math, types
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

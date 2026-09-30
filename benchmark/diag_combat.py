@@ -1,5 +1,4 @@
-import argparse, sys, time
-sys.path.insert(0, ".")
+import argparse, time
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset

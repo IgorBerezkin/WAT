@@ -1,5 +1,4 @@
-import sys, math, time
-sys.path.insert(0, ".")
+import math, time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

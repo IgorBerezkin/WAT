@@ -1,8 +1,8 @@
+import time
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-from datetime import datetime
 from wat.models.wat_v1 import WATModel
 
 np.random.seed(42)
@@ -57,15 +57,6 @@ class TransformerLanguageModel(nn.Module):
         x = x[:, -1, :]
         return self.predict(x)
 
-def find_embed_dim(model_class, vocab_size, target_params):
-    best_ed, best_params = None, float('inf')
-    for ed in range(8, 256, 4):
-        model = model_class(vocab_size, ed)
-        n_params = sum(p.numel() for p in model.parameters())
-        if abs(n_params - target_params) < abs(best_params - target_params):
-            best_params = n_params
-            best_ed = ed
-    return best_ed, best_params
 
 def train_lm(model, train_loader, test_loader, epochs, lr, device, name):
     print(f"\n  Training {name}...")
@@ -74,7 +65,6 @@ def train_lm(model, train_loader, test_loader, epochs, lr, device, name):
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-5)
     criterion = nn.CrossEntropyLoss()
     best_acc = 0
-    import time
     for epoch in range(epochs):
         epoch_start = time.time()
         model.train()
