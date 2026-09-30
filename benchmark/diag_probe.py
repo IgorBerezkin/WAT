@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from wat_lab import (WATBlockX, WATBackboneX, TransformerBackbone, GLUMerge,
+from wat.lab import (WATBlockX, WATBackboneX, TransformerBackbone, GLUMerge,
                      make_copy)
 
 torch.manual_seed(42)

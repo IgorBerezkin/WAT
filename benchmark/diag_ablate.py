@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-from wat_lab import WATBackboneX, make_copy
+from wat.lab import WATBackboneX, make_copy
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ED, K, T, EPOCHS = 96, 32, 128, 60

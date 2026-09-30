@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-from wat_lab import (WATBlockX, WATBackboneX, GLUMerge, LMModel, make_copy,
+from wat.lab import (WATBlockX, WATBackboneX, GLUMerge, LMModel, make_copy,
                      evaluate, n_params)
 
 torch.manual_seed(42)
