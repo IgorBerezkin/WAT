@@ -1,10 +1,3 @@
-"""
-Transformer Baseline
-====================
-Causal (GPT-style) Transformer с идентичным интерфейсом WATDeepStackV1.
-chunk_size принимается но игнорируется - только для совместимости.
-"""
-
 import math
 import torch
 import torch.nn as nn
@@ -24,22 +17,21 @@ class CausalSelfAttention(nn.Module):
         self.proj = nn.Linear(embed_dim, embed_dim)
         self.attn_dropout = nn.Dropout(dropout)
 
-        # Causal mask
         mask = torch.tril(torch.ones(max_len, max_len)).unsqueeze(0).unsqueeze(0)
         self.register_buffer("mask", mask)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, T, D = x.shape
-        qkv = self.qkv(x).chunk(3, dim=-1)                    # 3 x (B, T, D)
+        qkv = self.qkv(x).chunk(3, dim=-1)
         q, k, v = [t.view(B, T, self.n_heads, self.head_dim)
-                     .transpose(1, 2) for t in qkv]           # (B, H, T, hd)
+                     .transpose(1, 2) for t in qkv]
 
-        attn = (q @ k.transpose(-2, -1)) * self.scale         # (B, H, T, T)
+        attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.masked_fill(self.mask[:, :, :T, :T] == 0, float('-inf'))
         attn = F.softmax(attn, dim=-1)
         attn = self.attn_dropout(attn)
 
-        out = (attn @ v).transpose(1, 2).contiguous()         # (B, T, H, hd)
+        out = (attn @ v).transpose(1, 2).contiguous()
         out = out.view(B, T, D)
         return self.proj(out)
 
@@ -64,17 +56,12 @@ class TransformerBlock(nn.Module):
 
 
 class TransformerBaseline(nn.Module):
-    """
-    GPT-style Transformer.
-    Интерфейс идентичен WATDeepStackV1 — chunk_size принимается но не используется.
-    n_heads подбирается автоматически как наибольший делитель embed_dim <= 4.
-    """
     def __init__(
         self,
         vocab_size: int,
         embed_dim:  int,
         n_layers:   int   = 2,
-        chunk_size: int   = 32,   # ignored, only for interface compatibility
+        chunk_size: int   = 32,
         max_len:    int   = 2048,
         dropout:    float = 0.1,
     ):
@@ -82,7 +69,6 @@ class TransformerBaseline(nn.Module):
         self.embed_dim = embed_dim
         self.n_layers  = n_layers
 
-        # Подбираем n_heads: максимальный делитель embed_dim из [1,2,4]
         n_heads = 1
         for h in [1, 2, 4]:
             if embed_dim % h == 0 and embed_dim // h >= 8:
@@ -120,7 +106,7 @@ class TransformerBaseline(nn.Module):
         for layer in self.layers:
             h = layer(h)
         h = self.output_norm(h)
-        return self.predict(h)                                 # (B, T, vocab_size)
+        return self.predict(h)
 
     def count_params(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
@@ -132,7 +118,6 @@ def find_embed_dim_transformer(
     n_layers:      int = 2,
     max_ed:        int = 512,
 ) -> tuple[int, int]:
-    """Подбирает embed_dim чтобы число параметров было близко к target_params."""
     best_ed, best_n = 8, float('inf')
     for ed in range(8, max_ed, 4):
         try:

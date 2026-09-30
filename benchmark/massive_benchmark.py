@@ -1,42 +1,8 @@
-# -*- coding: utf-8 -*-
-"""
-================================================================================
-MASSIVE BENCHMARK — WAT DeepStack vs Transformer vs LSTM vs Mamba
-================================================================================
-Архитектура WAT: Igor Berezkin (https://github.com/IgorBerezkin/WAT)
-Бенчмарк-харнесс: подготовлен по запросу автора для независимого сравнения.
-
-Один файл, всё скачивает и генерирует сам. Рассчитан на RTX 3050 6GB.
-
-ЗАПУСК:
-  python massive_benchmark.py --quick            # смок-тест, ~5-10 минут (сначала это!)
-  python massive_benchmark.py                    # полный прогон, ~3-4 часа
-  python massive_benchmark.py --task lm          # только языковое моделирование
-  python massive_benchmark.py --task speed,copy  # выборочно
-  python massive_benchmark.py --scale big        # ~5M параметров (дольше)
-
-ЗАДАЧИ:
-  speed    — скорость fwd+bwd на seq 256..2048 (линейность WAT vs O(n^2))
-  lm       — char-LM, ПОЛНЫЙ TinyShakespeare (1.1M символов, 90/5/5), метрика bpc
-  brackets — классификация баланса скобок, длины 512-1024, ОДИНАКОВЫЕ головы у всех
-  copy     — selective copying (фирменный диагностический тест Mamba)
-
-БЕЙЗЛАЙНЫ:
-  wat         — WATDeepStackV1 (код автора, без изменений)
-  transformer — pre-LN GPT-style (честный: warmup, RMSNorm, GELU, scaled init)
-  lstm        — 2-слойный LSTM
-  mamba       — Mamba (SSD-скан, чистый PyTorch; официальный mamba_ssm
-                подхватится автоматически, если установлен)
-  + n-gram reference для LM (бесплатный якорь качества)
-
-РЕЗУЛЬТАТЫ: ./results_massive/results.json + summary.md + консольная таблица.
-================================================================================
-"""
 import argparse, json, math, os, random, sys, time, urllib.request
 from collections import OrderedDict
 
 try:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows-консоль
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 except Exception:
     pass
 
@@ -52,9 +18,6 @@ OUT_DIR = os.path.join(HERE, "results_massive")
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(OUT_DIR, exist_ok=True)
 
-# ============================================================================
-# 1. WAT DEEPSTACK — код Igor Berezkin, перенесён без изменений логики
-# ============================================================================
 
 class CausalConv1d(nn.Module):
     def __init__(self, embed_dim: int, kernel_size: int = 3):
@@ -70,8 +33,6 @@ class CausalConv1d(nn.Module):
 
 
 class WATBlock(nn.Module):
-    """WATBlock — авторская реализация (wat_deepstack.py), 1:1."""
-
     def __init__(self, embed_dim: int, chunk_size: int = 32):
         super().__init__()
         self.embed_dim = embed_dim
@@ -146,16 +107,11 @@ class WATBlock(nn.Module):
                                  .reshape(B, T_padded, D)
         h_ctx = x_padded + self.W_global(ctx_expanded)
         h_ctx = h_ctx[:, :T, :]
-        x = x + (h_ctx - x.detach()) * 0.5  # авторская строка, сохранена как есть
+        x = x + (h_ctx - x.detach()) * 0.5
         h = self.norm_ffn(x)
         x = x + self.ffn(h)
         return x
 
-
-# ============================================================================
-# 2. ОБЩИЙ ИНТЕРФЕЙС BACKBONE: токены -> hidden (B, T, D)
-#    Головы задач навешиваются одинаково на все архитектуры.
-# ============================================================================
 
 class WATBackbone(nn.Module):
     def __init__(self, vocab_size, embed_dim, n_layers=2, chunk_size=32,
@@ -267,54 +223,38 @@ class LSTMBackbone(nn.Module):
         return self.output_norm(h)
 
 
-# ---------------------------------------------------------------------------
-# Mamba: SSD-скан (Mamba-2 style, скалярный decay на канал), чистый PyTorch.
-# Стабильный: exp только от неположительных величин. Последовательность
-# обрабатывается чанками по 32 (16 последовательных шагов на seq 512 вместо 512).
-# Если установлен официальный mamba_ssm — используется он.
-# ---------------------------------------------------------------------------
 _OFFICIAL_MAMBA = False
 try:
-    from mamba_ssm import Mamba as _OfficialMamba  # noqa
+    from mamba_ssm import Mamba as _OfficialMamba
     _OFFICIAL_MAMBA = True
 except Exception:
     _OFFICIAL_MAMBA = False
 
 
 def ssd_scan(x, dt, A_log, Bm, Cm, chunk=32):
-    """
-    x:  (b, T, d)  вход (после conv+silu)
-    dt: (b, T, d)  до softplus
-    A_log: (d,)    лог |A|
-    Bm, Cm: (b, T, N)  входозависимые B и C
-    Возвращает y: (b, T, d)
-    """
     b, T, d = x.shape
     N = Bm.shape[-1]
-    a = -torch.exp(A_log.float())               # (d,) < 0
-    dt = F.softplus(dt.float())                 # (b,T,d) > 0
-    logdec = dt * a                             # (b,T,d) < 0
-    xin = x.float() * dt                        # дискретизация (Euler)
+    a = -torch.exp(A_log.float())
+    dt = F.softplus(dt.float())
+    logdec = dt * a
+    xin = x.float() * dt
     Bm = Bm.float(); Cm = Cm.float()
     y = torch.empty(b, T, d, device=x.device, dtype=torch.float32)
     S = torch.zeros(b, d, N, device=x.device, dtype=torch.float32)
     for s in range(0, T, chunk):
         e = min(s + chunk, T)
         Q = e - s
-        lq = logdec[:, s:e]                     # (b,Q,d)
-        P = lq.cumsum(1)                        # (b,Q,d), убывает
+        lq = logdec[:, s:e]
+        P = lq.cumsum(1)
         Bq, Cq, xq = Bm[:, s:e], Cm[:, s:e], xin[:, s:e]
-        # межчанковый вклад состояния
         y_inter = torch.einsum("bqn,bdn->bqd", Cq, S) * P.exp()
-        # внутричанковый вклад (i >= j)
-        M = torch.einsum("bqn,bpn->bqp", Cq, Bq)          # (b,Q,Q)
-        dec = P.unsqueeze(2) - P.unsqueeze(1)             # (b,Q(i),Q(j),d) = P_i - P_j
+        M = torch.einsum("bqn,bpn->bqp", Cq, Bq)
+        dec = P.unsqueeze(2) - P.unsqueeze(1)
         tri = torch.ones(Q, Q, device=x.device, dtype=torch.bool).tril()
         dec = dec.masked_fill(~tri.view(1, Q, Q, 1), float("-inf")).exp()
         y_intra = torch.einsum("bqp,bqpd,bpd->bqd", M, dec, xq)
         y[:, s:e] = y_inter + y_intra
-        # обновление состояния
-        wdec = (P[:, -1].unsqueeze(1) - P).exp()          # (b,Q,d), <=1
+        wdec = (P[:, -1].unsqueeze(1) - P).exp()
         S = P[:, -1].exp().unsqueeze(-1) * S + \
             torch.einsum("bqd,bqn->bdn", wdec * xq, Bq)
     return y.to(x.dtype)
@@ -332,11 +272,10 @@ class MambaBlockMinimal(nn.Module):
         self.x_proj = nn.Linear(d_inner, d_state * 2 + 1, bias=False)
         self.dt_proj = nn.Linear(1, d_inner, bias=True)
         A = torch.arange(1, d_state + 1, dtype=torch.float32).repeat(
-            d_inner, 1).mean(dim=1)             # скалярный decay на канал
+            d_inner, 1).mean(dim=1)
         self.A_log = nn.Parameter(torch.log(A))
         self.D = nn.Parameter(torch.ones(d_inner))
         self.out_proj = nn.Linear(d_inner, embed_dim, bias=False)
-        # dt bias init: softplus^-1(U[1e-3, 0.1])
         with torch.no_grad():
             u = torch.rand(d_inner) * (0.1 - 1e-3) + 1e-3
             self.dt_proj.bias.copy_(u + torch.log(-torch.expm1(-u)))
@@ -345,14 +284,14 @@ class MambaBlockMinimal(nn.Module):
         res = x
         x = self.norm(x)
         xz = self.in_proj(x)
-        xs, z = xz.chunk(2, dim=-1)             # (b,T,di) x2
+        xs, z = xz.chunk(2, dim=-1)
         T = xs.size(1)
         xs = self.conv1d(xs.transpose(1, 2))[:, :, :T].transpose(1, 2)
         xs = F.silu(xs)
-        bcd = self.x_proj(xs)                   # (b,T,2N+1)
+        bcd = self.x_proj(xs)
         N = (bcd.shape[-1] - 1) // 2
         Bm, Cm, dt0 = bcd[..., :N], bcd[..., N:2 * N], bcd[..., 2 * N:]
-        dt = self.dt_proj(dt0)                  # (b,T,di)
+        dt = self.dt_proj(dt0)
         y = ssd_scan(xs, dt, self.A_log, Bm, Cm)
         y = y + self.D * xs
         y = y * F.silu(z)
@@ -401,10 +340,6 @@ def init_scaled(model, n_layers):
             nn.init.normal_(m.weight, 0.0, 0.02)
 
 
-# ============================================================================
-# 3. ГОЛОВЫ ЗАДАЧ (одинаковые для всех архитектур)
-# ============================================================================
-
 class LMModel(nn.Module):
     def __init__(self, backbone, vocab_size):
         super().__init__()
@@ -416,9 +351,6 @@ class LMModel(nn.Module):
 
 
 class CLSModel(nn.Module):
-    """Классификация: masked mean pooling + linear. ОДИНАКОВО для всех —
-    никаких tree_root у WAT (закрывает методологический конфаунд статьи)."""
-
     def __init__(self, backbone, n_classes, pad_id):
         super().__init__()
         self.backbone = backbone
@@ -455,10 +387,6 @@ def match_embed_dim(cls, vocab, target, n_layers, max_len):
     return best_ed, best_n
 
 
-# ============================================================================
-# 4. ДАННЫЕ
-# ============================================================================
-
 def load_shakespeare():
     path = os.path.join(DATA_DIR, "shakespeare.txt")
     if not os.path.exists(path):
@@ -488,7 +416,6 @@ class LMDataset(Dataset):
 
 
 def gen_balanced(rng, length):
-    """Сбалансированная скобочная последовательность заданной чётной длины."""
     pairs = {"(": ")", "[": "]", "{": "}"}
     opens = list(pairs.keys())
     seq, stack = [], []
@@ -523,13 +450,13 @@ def corrupt(rng, seq):
     for _ in range(20):
         s2 = list(seq)
         op = rng.randrange(3)
-        if op == 0:                                   # заменить один символ
+        if op == 0:
             i = rng.randrange(len(s2))
             s2[i] = rng.choice(list("()[]{}"))
-        elif op == 1:                                 # поменять местами два
+        elif op == 1:
             i, j = rng.randrange(len(s2)), rng.randrange(len(s2))
             s2[i], s2[j] = s2[j], s2[i]
-        else:                                         # перевернуть один
+        else:
             i = rng.randrange(len(s2))
             flip = {"(": ")", ")": "(", "[": "]", "]": "[",
                     "{": "}", "}": "{"}
@@ -555,7 +482,7 @@ def make_brackets(n, lo, hi, seed):
             if bad is None:
                 continue
             xs.append([cmap[c] for c in bad]); ys.append(0)
-    return xs, ys, 7, PAD                              # vocab=7 (6 скобок+PAD)
+    return xs, ys, 7, PAD
 
 
 class PaddedCLSDataset(Dataset):
@@ -572,10 +499,8 @@ class PaddedCLSDataset(Dataset):
 
 
 def make_copy(n, seq_len, n_mem, seed):
-    """Selective copying: n_mem токенов-«содержимого» раскиданы по шуму,
-    модель должна выдать их по порядку на последних n_mem позициях."""
     rng = np.random.RandomState(seed)
-    V_CONTENT, NOISE, MARK = 16, 16, 17            # vocab = 18
+    V_CONTENT, NOISE, MARK = 16, 16, 17
     xs = np.full((n, seq_len), NOISE, dtype=np.int64)
     ys = np.full((n, seq_len), -100, dtype=np.int64)
     body = seq_len - n_mem
@@ -587,10 +512,6 @@ def make_copy(n, seq_len, n_mem, seed):
         ys[i, body:] = toks
     return torch.from_numpy(xs), torch.from_numpy(ys), 18
 
-
-# ============================================================================
-# 5. ОБУЧЕНИЕ / ОЦЕНКА
-# ============================================================================
 
 def make_sched(opt, total_steps, warmup):
     def fn(s):
@@ -691,13 +612,7 @@ def evaluate(model, loader, device, loss_kind):
     return corr / max(1, tot), nll / max(1, tot) / math.log(2)
 
 
-# ============================================================================
-# 6. N-GRAM REFERENCE (векторизованный, на numpy)
-# ============================================================================
-
 def ngram_reference(train, eval_pairs, V, orders=(3, 4, 5)):
-    """eval_pairs: список (ctx_array, target) окон; предсказание argmax
-    по частотам с backoff. Возвращает {order: acc}."""
     results = {}
     tables = {}
     for o in sorted(set(list(orders) + [1, 2])):
@@ -710,7 +625,7 @@ def ngram_reference(train, eval_pairs, V, orders=(3, 4, 5)):
         ctx = uk // V
         order_sort = np.lexsort((cnt, ctx))
         ctx_s, uk_s = ctx[order_sort], uk[order_sort]
-        last = np.r_[ctx_s[1:] != ctx_s[:-1], True]     # последний = max count
+        last = np.r_[ctx_s[1:] != ctx_s[:-1], True]
         tables[o] = (ctx_s[last], (uk_s[last] % V))
     uni = np.bincount(train, minlength=V).argmax()
 
@@ -731,10 +646,6 @@ def ngram_reference(train, eval_pairs, V, orders=(3, 4, 5)):
     return results
 
 
-# ============================================================================
-# 7. ЗАДАЧИ
-# ============================================================================
-
 def task_speed(cfg, results):
     print("\n" + "=" * 78 + "\nTASK: SPEED (fwd+bwd, tok/s)\n" + "=" * 78)
     device = cfg.device
@@ -754,7 +665,7 @@ def task_speed(cfg, results):
             y = torch.randint(0, V, (B, T), device=device)
             opt = torch.optim.AdamW(model.parameters(), lr=1e-4)
             try:
-                for _ in range(2):                     # warmup
+                for _ in range(2):
                     loss = F.cross_entropy(model(x).reshape(-1, V), y.reshape(-1))
                     loss.backward(); opt.step(); opt.zero_grad()
                 if device.type == "cuda":
@@ -812,7 +723,6 @@ def task_lm(cfg, results):
         del model
         if device.type == "cuda":
             torch.cuda.empty_cache()
-    # n-gram якорь на тех же test-позициях
     print("\n  --- n-gram reference ---")
     pairs = []
     for s in range(0, len(test) - seq - 1, seq):
@@ -886,10 +796,6 @@ def task_copy(cfg, results):
             torch.cuda.empty_cache()
     results["copy"] = rows
 
-
-# ============================================================================
-# 8. MAIN
-# ============================================================================
 
 def summarize(results):
     lines = ["# MASSIVE BENCHMARK — итог", ""]

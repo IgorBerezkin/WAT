@@ -1,22 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-diag_combat.py — боевое сравнение до сходимости: copy T=512/nm=16 и recall.
-Положи рядом с wat_lab.py.  Запуск:
-  python diag_combat.py              # оба блока (~25-30 мин)
-  python diag_combat.py --task copy  # только боевой copy
-  python diag_combat.py --task recall
-GPU, fp32, без autocast. Все модели учатся ДО ПЛАТО (ранний выход:
-30 эпох без улучшения best после перехода) или до капа.
-
-Блок A — COPY T=512, n_mem=16 (протокол massive_benchmark, tiny-масштаб):
-  wat_v0 (кап 200), wat_v1 лестница (кап 200), transformer (кап 60),
-  lstm (кап 60). Слепая зона ~3.2% -> потолок ~97%.
-Блок B — RECALL T=256, 12 пар (протокол wat_lab):
-  wat_v0 (кап 150), transformer (кап 30), lstm (кап 30).
-
-В таблице: переход, best, эпох, СЕКУНД — сравнивай и по эпохам, и по
-wall-clock (эпоха WAT на T=512 ~2x дешевле трансформерной).
-"""
 import argparse, sys, time
 sys.path.insert(0, ".")
 import torch

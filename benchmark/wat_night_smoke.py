@@ -1,17 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-wat_night_smoke.py — предполётная проверка ВСЕХ ночных прогонов.
-Положи рядом с wat_night.py, wat_night_x.py, wat_lab.py.
-Запуск:  python wat_night_smoke.py     (~2-4 минуты на GPU)
-
-Каждый из 31 ночного прогона исполняется в миниатюре ТЕМ ЖЕ кодом:
-тот же build, тот же train (1 эпоха на 256 сэмплах), для тяжёлых конфигов —
-РЕАЛЬНЫЙ batch size (ловим OOM сейчас, а не в 3 часа ночи). X-варианты
-дополнительно проходят пробу каузальности. Особые пути (curriculum по T,
-curriculum по K, эхо-фаза, aux-loss, отжиг лестницы, LM) — исполняются.
-
-Все PASS => ночь пройдёт. Любой FAIL => чиним до запуска ночи.
-"""
 import sys, time, traceback
 sys.path.insert(0, ".")
 import torch
@@ -39,7 +25,6 @@ def check(name, fn):
         torch.cuda.empty_cache()
 
 
-# --- мини-данные (боевая форма, крошечный объём) ---------------------------
 def tiny_copy(T, nm, n=256, nv=128):
     xtr, ytr, V = make_copy(n, T, nm, seed=42)
     xva, yva, _ = make_copy(nv, T, nm, seed=43)
@@ -47,9 +32,6 @@ def tiny_copy(T, nm, n=256, nv=128):
             xva.to(DEVICE), yva.to(DEVICE), V)
 
 
-# ============================================================================
-# ЯДРО (wat_night): те же build/train
-# ============================================================================
 def smoke_core():
     xtr, ytr, xva, yva, V = tiny_copy(512, 16)
 
@@ -114,9 +96,6 @@ def smoke_core():
     check("s2_v0/gain/ladder_safe", fn_s2)
 
 
-# ============================================================================
-# БЛОК X (wat_night_x): verify + те же train-пути
-# ============================================================================
 def smoke_x():
     xtr, ytr, xva, yva, V = tiny_copy(512, 16)
 

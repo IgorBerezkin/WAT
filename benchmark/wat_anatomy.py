@@ -1,32 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-wat_anatomy.py — прозрачная колба: полный анатомический разрез WAT v0.
-Положи рядом с wat_lab.py.  Запуск:  python wat_anatomy.py
-GPU ~3-5 мин (CPU ~10-15). Бэкбон заморожен на init (seed 42, те же условия,
-что дали probe(ctx)=76% в diag_probe) — плюс градиентная панель.
-
-Реактив: copy T=128, n_mem=1 (один токен 0..15 в случайной позиции, читатель
-на позиции 127). Один слой, K=32, ED=96 — транспорт в одном блоке.
-
-ПАНЕЛЬ A — ПУТЬ ДАННЫХ (стадия за стадией):
-    rms       — величина потока на элемент
-    dSig      — ||Δ|| / rms при подмене токена (амплитуда сигнала, %)
-    probe     — точность линейной пробы по вектору стадии (все сэмплы)
-    probe*    — то же, только сэмплы, где токен ДОСТИЖИМ для стадии
-                (для ctx/читателя: токен не в чанке читателя)
-  Стадии: эмбеддинг токена -> после conv -> дерево уровни 1..5 (саммари)
-          -> ctx читателя -> инжекция -> поток после инжекции -> hidden.
-
-ПАНЕЛЬ B — ГРАДИЕНТНЫЙ SNR (подтверждение диагноза оптимизации):
-  SNR = ||средний градиент||^2 / средняя ||отклонение батча||^2
-  по группам параметров, в четырёх режимах:
-    WAT bs=16 n_mem=1   — режим, в котором всё лежало на шансе
-    WAT bs=256 n_mem=1  — крупный батч
-    WAT bs=16 n_mem=16  — плотная супервизия
-    TR  bs=16 n_mem=1   — трансформер-эталон
-  SNR << 1: батчи тянут в разные стороны, шаг — шум.
-  SNR ~ 1+: градиент согласован, обучение возможно.
-"""
 import sys, math
 sys.path.insert(0, ".")
 import torch
@@ -42,25 +13,18 @@ NTR, NTE, NDELTA = 4000, 1000, 512
 NOISE_TOK = 16
 
 
-# ---------------------------------------------------------------------------
-# данные
-# ---------------------------------------------------------------------------
 def dataset():
     x, y, V = make_copy(NTR + NTE, T, 1, seed=42)
     body = T - 1
-    pos = (x[:, :body] != NOISE_TOK).float().argmax(dim=1)      # позиция токена
-    lab = x[torch.arange(x.size(0)), pos]                        # 0..15
-    reachable = (pos < 96)          # токен НЕ в чанке читателя (чанки 0..2)
+    pos = (x[:, :body] != NOISE_TOK).float().argmax(dim=1)
+    lab = x[torch.arange(x.size(0)), pos]
+    reachable = (pos < 96)
     return (x.to(DEVICE), lab.to(DEVICE), pos.to(DEVICE),
             reachable.to(DEVICE), V)
 
 
-# ---------------------------------------------------------------------------
-# анатомический трейс одного блока v0
-# ---------------------------------------------------------------------------
 @torch.no_grad()
 def trace(bb, x, pos):
-    """Возвращает dict: имя стадии -> (B, D) вектор, отслеживающий токен."""
     B = x.size(0)
     ar = torch.arange(B, device=x.device)
     blk = bb.layers[0]
@@ -76,7 +40,7 @@ def trace(bb, x, pos):
     x1 = h0 + hh
     out["conv@token"] = x1[ar, pos]
 
-    chunks = x1.unfold(1, K, K).transpose(2, 3)                  # (B, 4, 32, D)
+    chunks = x1.unfold(1, K, K).transpose(2, 3)
     chunk_idx = pos // K
     node_idx = pos % K
     curr, size, lvl = chunks, K, 0
@@ -89,9 +53,9 @@ def trace(bb, x, pos):
         size, lvl = next_size, lvl + 1
         node_idx = node_idx // 2
         out[f"tree_L{lvl} ({size} узл.)"] = curr[ar, chunk_idx, node_idx]
-    summaries = curr.squeeze(2)                                  # (B, 4, D)
+    summaries = curr.squeeze(2)
 
-    ctx = blk._ctx_mean(summaries)                               # (B, 4, D)
+    ctx = blk._ctx_mean(summaries)
     out["ctx@reader"] = ctx[:, -1]
     inj = 0.5 * blk.W_global(ctx[:, -1])
     out["inject@reader"] = inj
@@ -106,9 +70,6 @@ def stage_names():
             ["ctx@reader", "inject@reader", "stream+inj@rdr", "hidden@reader"])
 
 
-# ---------------------------------------------------------------------------
-# линейная проба
-# ---------------------------------------------------------------------------
 def linear_probe(f_tr, y_tr, f_te, y_te, epochs=350):
     mu, sd = f_tr.mean(0), f_tr.std(0) + 1e-6
     f_tr, f_te = (f_tr - mu) / sd, (f_te - mu) / sd
@@ -122,16 +83,12 @@ def linear_probe(f_tr, y_tr, f_te, y_te, epochs=350):
         return (probe(f_te).argmax(-1) == y_te).float().mean().item()
 
 
-# ---------------------------------------------------------------------------
-# панель A
-# ---------------------------------------------------------------------------
 def panel_a():
     x, lab, pos, reach, V = dataset()
     bb = WATBackboneX(V, ED, n_layers=1, chunk_size=K, max_len=T,
                       dropout=0.0, ctx_mode="mean", intra=False)
     bb = bb.to(DEVICE).eval()
 
-    # трейс батчами
     feats = {n: [] for n in stage_names()}
     for i in range(0, x.size(0), 256):
         tr = trace(bb, x[i:i + 256], pos[i:i + 256])
@@ -139,7 +96,6 @@ def panel_a():
             feats[n].append(tr[n])
     feats = {n: torch.cat(v) for n, v in feats.items()}
 
-    # Δ-чувствительность на подмножестве
     xs = x[:NDELTA].clone()
     ps = pos[:NDELTA]
     xw = xs.clone()
@@ -170,9 +126,6 @@ def panel_a():
     print()
 
 
-# ---------------------------------------------------------------------------
-# панель B — градиентный SNR
-# ---------------------------------------------------------------------------
 def grad_groups_wat(model):
     blk = model.backbone.layers[0]
     tm = blk.tree_merge
@@ -225,7 +178,6 @@ def panel_b():
     print("ПАНЕЛЬ B — ГРАДИЕНТНЫЙ SNR (12 независимых батчей на режим)")
     print("=" * 76)
     conds = []
-    # WAT: три режима
     for bs, n_mem, tag in ((16, 1, "WAT bs16 nm1"),
                            (256, 1, "WAT bs256 nm1"),
                            (16, 16, "WAT bs16 nm16")):
@@ -238,7 +190,6 @@ def panel_b():
                            bs)
         conds.append((tag, snr))
         del m
-    # трансформер-эталон
     x, y, V = make_copy(16 * 12, T, 1, seed=101)
     torch.manual_seed(42)
     m = LMModel(TransformerBackbone(V, ED, n_layers=1, max_len=T,

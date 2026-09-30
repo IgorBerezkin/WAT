@@ -112,7 +112,7 @@ class WATModel(nn.Module):
             'seq_len': seq_len,
         }
 
-def generate_text(model, prompt_tokens, vocab_size, idx_to_char, device, 
+def generate_text(model, prompt_tokens, vocab_size, idx_to_char, device,
                   max_len=200, temperature=0.8, top_k=40):
     import torch.nn.functional as F
     model.eval()

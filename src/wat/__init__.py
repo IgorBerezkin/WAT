@@ -1,5 +1,3 @@
-"""Wave-Attractor-Tree research package."""
-
 from .models import (
     WATDeepStackV1,
     WATV1Model,

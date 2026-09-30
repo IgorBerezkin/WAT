@@ -85,7 +85,7 @@ class WATModel(nn.Module):
             'last_nodes': None,
             'seq_len': seq_len,
         }
-    
+
     def forward_with_cache(self, x: torch.Tensor) -> torch.Tensor:
         if not hasattr(self, 'cache') or self.cache is None:
             return self.forward(x)
@@ -118,7 +118,7 @@ class WATModel(nn.Module):
         self.cache['last_nodes'] = last_nodes
         return self.predict(curr)
 
-def generate_text(model, prompt_tokens, vocab_size, idx_to_char, device, 
+def generate_text(model, prompt_tokens, vocab_size, idx_to_char, device,
                   max_len=200, temperature=0.8, top_k=40):
     import torch.nn.functional as F
     model.eval()

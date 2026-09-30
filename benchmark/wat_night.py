@@ -1,24 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-wat_night.py — НОЧНОЙ мега-бенчмарк: все рычаги, комбо, масштаб, curriculum.
-Положи рядом с wat_lab.py.  Запуск:  python wat_night.py
-~7-8 часов на RTX 3050. fp32, без autocast.
-
-ЖИВУЧЕСТЬ: после каждого прогона результат пишется в
-results_night/results.json; каждый прогон в try/except; при перезапуске
-завершённые прогоны ПРОПУСКАЮТСЯ (resume). summary.md обновляется по ходу.
-
-БЛОКИ:
-  A. Боевой copy (T=512, nm=16): v0/gain до 400 эпох БЕЗ срезов, lane-ретест,
-     gain+лестница, wide, wide+gain, ПОЛНЫЙ V2 (wide+gain+ladder_safe),
-     большая ED288/L3+gain, gain на сидах 1 и 2.
-  B. Curriculum по длине: 128(60) -> 256(60) -> 512(200), gain tiny.
-  C. Recall: данные против меморизации — 20K сэмплов vs контроль 6K.
-  D. LM-чек (полный Шекспир): v0/gain/wide по 12 эпох — язык не сломан?
-  E. S2-дуэль качества (T=128, nm=4, 400 эпох): v0 vs gain vs ladder_safe.
-
-Сознательно НЕ включено (нужен присмотр): матричное состояние, aux-loss.
-"""
 import json, os, sys, time, traceback, types
 sys.path.insert(0, ".")
 import torch
@@ -45,8 +24,6 @@ def save(rid, payload):
         json.dump(RESULTS, f, indent=1, ensure_ascii=False)
     write_summary()
 
-
-# --- архитектурные модификации (проверенные пути из wat_doctor/diag_fix) ---
 
 class GainedLinear(nn.Module):
     def __init__(self, lin, alpha0=8.0):
@@ -93,8 +70,6 @@ def build(V, T, ed=96, layers=1, gain=None, ladder=False, lane=False,
             blk._tree_reduction_all = types.MethodType(_tree_with_lane, blk)
     return LMModel(bb, V).to(DEVICE)
 
-
-# --- обучение ---------------------------------------------------------------
 
 @torch.no_grad()
 def val_acc(model, xva, yva, bs):
@@ -169,8 +144,6 @@ def run_guarded(rid, fn):
         torch.cuda.empty_cache()
 
 
-# --- данные (кэш) -----------------------------------------------------------
-
 _CACHE = {}
 
 
@@ -193,8 +166,6 @@ def recall_data(n):
                        xva.to(DEVICE), yva.to(DEVICE), V)
     return _CACHE[key]
 
-
-# --- блоки ------------------------------------------------------------------
 
 def block_combat():
     xtr, ytr, xva, yva, V = copy_data(512, 16)
@@ -301,8 +272,6 @@ def block_s2():
                          patience=60)
         run_guarded(rid, fn)
 
-
-# --- сводка -----------------------------------------------------------------
 
 def write_summary():
     lines = ["# НОЧНОЙ ПРОГОН — сводка", "",

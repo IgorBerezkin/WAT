@@ -1,44 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-================================================================================
-WAT LAB — поиск решения передачи контекста + карта превосходства/деградации
-================================================================================
-Архитектура WAT: Igor Berezkin (https://github.com/IgorBerezkin/WAT)
-Лаборатория вариаций, протокол заморожен под результаты massive_benchmark.
-
-ВАРИАНТЫ ПЕРЕДАЧИ ГЛОБАЛЬНОГО КОНТЕКСТА (по одному механизму за раз):
-  v0  — cumulative mean по саммари чанков (текущий DeepStack, референс)
-  v1  — prefix-tree: каузальный doubling-scan НАД саммари ("лестница коробок")
-  v2  — gated recurrence: курьер с гейтом по саммари (16 шагов на seq 512)
-  v3  — v0 + intra-chunk prefix: лечим слепую зону внутри чанка
-  v4  — v1 + intra-chunk prefix: полный фикс (лестница + локальный префикс)
-  v5  — cross-chunk attention: позиции напрямую смотрят на прошлые саммари
-        (верхняя планка точного роутинга внутри семейства WAT)
-
-ЗАДАЧИ:
-  speed     — цена механизма (tok/s, T=512/2048)
-  copy      — ЗАМОРОЖЕННЫЙ selective copying (генератор/сиды/бюджет 1:1
-              с massive_benchmark; референсы transformer/lstm вшиты)
-  lm        — короткий LM-чек (3 эпохи, TinyShakespeare), что язык не сломан
-  brackets2 — скобки v2: смесь сложностей 1/2/4/8 мутаций, patience 8,
-              breakdown точности по сложности
-  depth     — классификация максимальной глубины вложенности (4 класса)
-  listops   — вложенные операции [MAX 2 [MIN 5 7] ...] (10 классов, LRA-style)
-  recall    — associative recall: пары ключ-значение в шуме, запрос в конце
-
-Перед обучением КАЖДЫЙ вариант проходит автоматическую пробу каузальности.
-Утечка из будущего => вариант помечается LEAK и не тренируется.
-
-ЗАПУСК:
-  python wat_lab.py --quick                     # смок ~5-10 мин (сначала это!)
-  python wat_lab.py                             # полный прогон, ~1.5-2.5 ч (3050)
-  python wat_lab.py --task copy                 # только copy
-  python wat_lab.py --variants v0,v1,v4         # выборочно
-  python wat_lab.py --task brackets2 --baselines  # + transformer/lstm на новой задаче
-
-Результаты: ./results_lab/results.json + summary.md
-================================================================================
-"""
 import argparse, json, math, os, random, sys, time, urllib.request
 from collections import OrderedDict
 
@@ -59,12 +18,6 @@ OUT_DIR = os.path.join(HERE, "results_lab")
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(OUT_DIR, exist_ok=True)
 
-# ---------------------------------------------------------------------------
-# РЕФЕРЕНСЫ из massive_benchmark (RTX 3050, 1M params, L=3, seed 42).
-# Протокол copy заморожен 1:1, поэтому эти числа валидны для сравнения.
-# LM-референсы взяты на эпохе 3 того же прогона (порядок батчей может чуть
-# отличаться => сравнивать с точностью до ~0.5pp).
-# ---------------------------------------------------------------------------
 REF = {
     "copy": {"transformer": 51.66, "lstm": 6.34, "wat_v0 (прошлый прогон)": 6.46,
              "šance": 6.25},
@@ -73,9 +26,6 @@ REF = {
            "4-gram (test acc)": 42.60},
 }
 
-# ============================================================================
-# БАЗОВЫЕ МОДУЛИ (формула merge — авторская, Igor Berezkin)
-# ============================================================================
 
 class CausalConv1d(nn.Module):
     def __init__(self, d, kernel_size=3):
@@ -90,8 +40,6 @@ class CausalConv1d(nn.Module):
 
 
 class GLUMerge(nn.Module):
-    """Авторская merge-формула WAT: GLU + RMSNorm + residual gate."""
-
     def __init__(self, d):
         super().__init__()
         self.W_val = nn.Linear(2 * d, d)
@@ -110,9 +58,6 @@ class GLUMerge(nn.Module):
 
 
 class WATBlockX(nn.Module):
-    """WATBlock с переключаемым механизмом глобального контекста.
-    ctx_mode: mean | prefix_tree | gated | attn ;  intra: bool"""
-
     def __init__(self, d, chunk_size=32, ctx_mode="mean", intra=False):
         super().__init__()
         self.d, self.K = d, chunk_size
@@ -120,7 +65,7 @@ class WATBlockX(nn.Module):
 
         self.conv = CausalConv1d(d, 3)
         self.W_gate = nn.Linear(d, d)
-        self.tree_merge = GLUMerge(d)          # дерево внутри чанка (как V0)
+        self.tree_merge = GLUMerge(d)
         self.W_global = nn.Linear(d, d)
         self.ffn = nn.Sequential(nn.Linear(d, d * 4), nn.GELU(),
                                  nn.Linear(d * 4, d))
@@ -128,7 +73,7 @@ class WATBlockX(nn.Module):
         self.norm_ffn = nn.RMSNorm(d)
 
         if ctx_mode == "prefix_tree":
-            self.scan_merge = GLUMerge(d)      # отдельные веса для лестницы
+            self.scan_merge = GLUMerge(d)
         elif ctx_mode == "gated":
             self.W_gr = nn.Linear(2 * d, d)
             self.W_sr = nn.Linear(2 * d, d)
@@ -141,7 +86,6 @@ class WATBlockX(nn.Module):
             self.intra_merge = GLUMerge(d)
             self.W_intra = nn.Linear(d, d)
 
-    # --- дерево чанков (авторское) ---
     def _tree_reduction_all(self, chunks):
         B, C, K, D = chunks.shape
         curr, size = chunks, K
@@ -154,7 +98,6 @@ class WATBlockX(nn.Module):
             size = next_size
         return curr.squeeze(2)
 
-    # --- механизмы глобального контекста (B, C, D) -> ctx на чанк ---
     def _ctx_mean(self, s):
         B, C, D = s.shape
         if C == 1:
@@ -169,12 +112,12 @@ class WATBlockX(nn.Module):
     def _ctx_prefix_tree(self, s):
         B, C, D = s.shape
         curr, step = s, 1
-        while step < C:                        # инклюзивный каузальный скан
+        while step < C:
             merged = self.scan_merge(curr[:, :-step], curr[:, step:])
             curr = torch.cat([curr[:, :step], merged], dim=1)
             step *= 2
         return torch.cat([torch.zeros(B, 1, D, device=s.device, dtype=s.dtype),
-                          curr[:, :-1, :]], dim=1)   # сдвиг: чанк i видит 0..i-1
+                          curr[:, :-1, :]], dim=1)
 
     def _ctx_gated(self, s):
         B, C, D = s.shape
@@ -189,7 +132,6 @@ class WATBlockX(nn.Module):
         return torch.stack(ctxs, dim=1)
 
     def _ctx_attn(self, x_padded, s):
-        """Возвращает контекст ПО ПОЗИЦИЯМ (B, Tp, D)."""
         B, Tp, D = x_padded.shape
         C = s.size(1)
         kv = torch.cat([self.null_summary.expand(B, 1, D).to(s.dtype), s], dim=1)
@@ -205,7 +147,6 @@ class WATBlockX(nn.Module):
         return torch.einsum("btc,bcd->btd", att, v)
 
     def _intra_prefix(self, x_padded):
-        """Инклюзивный префикс-скан внутри каждого чанка. (B,Tp,D)->(B,Tp,D)"""
         B, Tp, D = x_padded.shape
         C = Tp // self.K
         chunks = x_padded.view(B, C, self.K, D)
@@ -219,39 +160,33 @@ class WATBlockX(nn.Module):
     def forward(self, x):
         B, T, D = x.shape
         K = self.K
-        # локальный контекст (авторский путь)
         h = self.norm_conv(x)
         h = self.conv(h)
         h = h * torch.sigmoid(self.W_gate(h))
         x = x + h
-        # чанки
         pad_len = (K - T % K) % K
         x_padded = x if pad_len == 0 else torch.cat(
             [x, x[:, -1:, :].expand(-1, pad_len, -1)], dim=1)
         Tp = x_padded.size(1)
         C = Tp // K
         chunks = x_padded.unfold(1, K, K).transpose(2, 3)
-        summaries = self._tree_reduction_all(chunks)          # (B, C, D)
-        # глобальный контекст
+        summaries = self._tree_reduction_all(chunks)
         if self.ctx_mode == "attn":
-            ctx_pos = self._ctx_attn(x_padded, summaries)     # (B, Tp, D)
+            ctx_pos = self._ctx_attn(x_padded, summaries)
         else:
             ctx_chunk = {"mean": self._ctx_mean,
                          "prefix_tree": self._ctx_prefix_tree,
                          "gated": self._ctx_gated}[self.ctx_mode](summaries)
             ctx_pos = ctx_chunk.unsqueeze(2).expand(-1, -1, K, -1) \
                                .reshape(B, Tp, D)
-        # инжекция (авторская строка сохранена для сопоставимости с V0)
         h_ctx = x_padded + self.W_global(ctx_pos)
         h_ctx = h_ctx[:, :T, :]
         x = x + (h_ctx - x.detach()) * 0.5
-        # intra-chunk prefix (лечение слепой зоны)
         if self.intra:
             xp = x if pad_len == 0 else torch.cat(
                 [x, x[:, -1:, :].expand(-1, pad_len, -1)], dim=1)
             pref = self._intra_prefix(xp)[:, :T, :]
             x = x + self.W_intra(pref)
-        # FFN
         h = self.norm_ffn(x)
         x = x + self.ffn(h)
         return x
@@ -298,8 +233,6 @@ class WATBackboneX(nn.Module):
             h = self.layer_dropout(h)
         return self.output_norm(h)
 
-
-# --- бейзлайны (идентичны massive_benchmark) --------------------------------
 
 class CausalSelfAttention(nn.Module):
     def __init__(self, d, n_heads, dropout=0.1, max_len=2048):
@@ -385,8 +318,6 @@ class LSTMBackbone(nn.Module):
         return self.output_norm(h)
 
 
-# --- головы -----------------------------------------------------------------
-
 class LMModel(nn.Module):
     def __init__(self, backbone, vocab_size):
         super().__init__()
@@ -411,9 +342,6 @@ class CLSModel(nn.Module):
 
 
 class CLSRootModel(nn.Module):
-    """Голова из статьи: concat(masked_mean, tree_root). Отвечает на вопрос,
-    где жили +18pp — в дереве бэкбона или в прямом доступе к корню."""
-
     def __init__(self, backbone, n_classes, pad_id):
         super().__init__()
         self.backbone, self.pad_id = backbone, pad_id
@@ -450,10 +378,6 @@ def match_embed_dim(make_fn, target):
     return best_ed, best_n
 
 
-# ============================================================================
-# ПРОБА КАУЗАЛЬНОСТИ (обязательна для каждого варианта)
-# ============================================================================
-
 @torch.no_grad()
 def causality_probe(backbone, vocab):
     model = LMModel(backbone, vocab).eval()
@@ -467,10 +391,6 @@ def causality_probe(backbone, vocab):
             return False, p, d[:p].max().item()
     return True, None, 0.0
 
-
-# ============================================================================
-# ДАННЫЕ
-# ============================================================================
 
 def load_shakespeare():
     path = os.path.join(DATA_DIR, "shakespeare.txt")
@@ -499,8 +419,6 @@ class LMDataset(Dataset):
         return self.d[s:s + self.seq], self.d[s + 1:s + self.seq + 1]
 
 
-# --- copy: ЗАМОРОЖЕН 1:1 из massive_benchmark -------------------------------
-
 def make_copy(n, seq_len, n_mem, seed):
     rng = np.random.RandomState(seed)
     V_CONTENT, NOISE, MARK = 16, 16, 17
@@ -515,8 +433,6 @@ def make_copy(n, seq_len, n_mem, seed):
         ys[i, body:] = toks
     return torch.from_numpy(xs), torch.from_numpy(ys), 18
 
-
-# --- скобки -----------------------------------------------------------------
 
 PAIRS = {"(": ")", "[": "]", "{": "}"}
 FLIP = {"(": ")", ")": "(", "[": "]", "]": "[", "{": "}", "}": "{"}
@@ -552,7 +468,6 @@ def is_balanced(seq):
 
 
 def corrupt_n(rng, seq, n_mut):
-    """n_mut мутаций; вернёт испорченную (несбалансированную) или None."""
     for _ in range(30):
         s2 = list(seq)
         for _ in range(n_mut):
@@ -571,8 +486,6 @@ def corrupt_n(rng, seq, n_mut):
 
 
 def make_brackets2(n, lo, hi, seed):
-    """Смесь сложностей: половина balanced, половина corrupted с
-    n_mut из {1,2,4,8} поровну. Возвращает xs, ys, n_muts (0=balanced)."""
     rng = random.Random(seed)
     cmap = {c: i for i, c in enumerate("()[]{}")}
     PAD = 6
@@ -594,7 +507,6 @@ def make_brackets2(n, lo, hi, seed):
 
 
 def make_depth(n, lo, hi, seed):
-    """4 класса по квартилям максимальной глубины вложенности."""
     rng = random.Random(seed)
     cmap = {c: i for i, c in enumerate("()[]{}")}
     PAD = 6
@@ -625,8 +537,6 @@ def make_depth(n, lo, hi, seed):
             break
     return xs, ys, 7, PAD, q
 
-
-# --- listops ----------------------------------------------------------------
 
 LO_OPS = ["MAX", "MIN", "MED", "SM"]
 
@@ -689,15 +599,11 @@ class PaddedCLSDataset(Dataset):
         return torch.tensor(x), torch.tensor(self.ys[i])
 
 
-# --- associative recall -----------------------------------------------------
-
 def make_recall(n, seq_len, n_pairs, seed):
-    """Пары (ключ, значение) раскиданы по шуму; в конце MARK + ключ,
-    предсказать значение на последней позиции. Ключи уникальны."""
     rng = np.random.RandomState(seed)
     N_KEYS, N_VALS = 16, 16
-    KEY0, VAL0 = 0, N_KEYS                     # 0-15 ключи, 16-31 значения
-    NOISE, MARK = 32, 33                       # vocab = 34
+    KEY0, VAL0 = 0, N_KEYS
+    NOISE, MARK = 32, 33
     xs = np.full((n, seq_len), NOISE, dtype=np.int64)
     ys = np.full((n, seq_len), -100, dtype=np.int64)
     body = seq_len - 2
@@ -715,10 +621,6 @@ def make_recall(n, seq_len, n_pairs, seed):
         ys[i, body + 1] = VAL0 + vals[qi]
     return torch.from_numpy(xs), torch.from_numpy(ys), 34
 
-
-# ============================================================================
-# ОБУЧЕНИЕ (протокол massive_benchmark)
-# ============================================================================
 
 def make_sched(opt, total_steps, warmup):
     def fn(s):
@@ -819,12 +721,7 @@ def train_model(model, loaders, device, epochs, lr, loss_kind, name,
     return best
 
 
-# ============================================================================
-# СБОРКА МОДЕЛЕЙ
-# ============================================================================
-
 def build_backbone(name, vocab, cfg, max_len):
-    """name: v0..v5 | transformer | lstm"""
     if name in VARIANTS:
         kw = VARIANTS[name]
         def mk(ed):
@@ -859,10 +756,6 @@ def probe_or_skip(name, vocab, cfg, max_len):
               f"ПРОПУЩЕН !!!")
     return ok
 
-
-# ============================================================================
-# ЗАДАЧИ
-# ============================================================================
 
 def run_speed(cfg, results):
     print("\n" + "=" * 78 + "\nTASK: SPEED (цена механизма)\n" + "=" * 78)
@@ -998,7 +891,6 @@ def _run_cls_task(cfg, results, key, title, xs, ys, V, PAD, max_len, extra=None,
         best = train_model(model, (tl, vl), device, cfg.epochs_cls, cfg.lr,
                            "cls", name, patience=cfg.patience_cls)
         best["params"] = n_params(model)
-        # breakdown по сложности для brackets2
         if muts is not None:
             model = model.to(device).eval()
             mut_val = muts[ntr:]
@@ -1086,10 +978,6 @@ def run_recall(cfg, results):
     results["recall"] = rows
 
 
-# ============================================================================
-# ИТОГ
-# ============================================================================
-
 def summarize(results):
     lines = ["# WAT LAB — итог", ""]
     if "speed" in results:
@@ -1165,7 +1053,7 @@ def main():
     cfg.dropout, cfg.lr = 0.1, 3e-4
     cfg.bs_lm = 16 if cfg.device.type == "cpu" else 32
     cfg.bs_cls = 8 if cfg.device.type == "cpu" else 16
-    cfg.epochs_copy = 1 if cfg.quick else 15     # протокол copy заморожен
+    cfg.epochs_copy = 1 if cfg.quick else 15
     cfg.epochs_lm = 1 if cfg.quick else 3
     cfg.epochs_cls = 1 if cfg.quick else 30
     cfg.patience_cls = 8

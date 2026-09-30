@@ -1,29 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-diag_probe.py — есть ли информация в точке чтения? (линейный пробинг)
-Положи рядом с wat_lab.py.  Запуск:  python diag_probe.py
-GPU ~2-3 мин (CPU ~6-8). Обучается только крошечная линейная проба,
-бэкбоны ЗАМОРОЖЕНЫ на инициализации.
-
-Задача-канарейка: copy T=128, n_mem=1, один слой (L=1, транспорт обязан
-работать в одном блоке). Для каждой конфигурации меряем two-point probe:
-  probe(ctx)    — линейный классификатор токена по вектору глобального
-                  контекста читающего чанка (ДО инжекции)
-  probe(reader) — то же по hidden читателя, позиция 127 (ПОСЛЕ всего блока)
-
-Конфигурации:
-  C0  as-is                — контроль
-  C4  sum-res + inj8 + lane (прошлый фикс)
-  C5  ГРОМКАЯ ПОЛОСА       — lane std 0.3, дерево в саммари задавлено x0.1
-  C6  ТОЛЬКО ПОЛОСА        — саммари = lane, дерево выключено
-  TR  transformer          — эталон (probe(reader) only)
-
-ЧТЕНИЕ РЕЗУЛЬТАТОВ:
-  probe(ctx) >> 6.25%, probe(reader) ~ 6.25%  -> инжекция хоронит
-  probe(ctx) ~ 6.25%                          -> саммари хоронит
-  оба высокие, а e2e (из diag_fix) на шансе    -> проблема оптимизации,
-                                                 лечим масштабы/шаги/lr
-"""
 import sys, math, types
 sys.path.insert(0, ".")
 import torch
@@ -92,7 +66,6 @@ def build_wat(config):
 
 @torch.no_grad()
 def extract_wat(bb, x):
-    """Возвращает (ctx-вектор чанка читателя, hidden читателя)."""
     blk = bb.layers[0]
     positions = torch.arange(x.size(1), device=x.device)
     h = bb.embedding(x) + bb.pos_encoding(positions)
@@ -102,9 +75,9 @@ def extract_wat(bb, x):
     x1 = h + hh
     chunks = x1.unfold(1, K, K).transpose(2, 3)
     s = blk._tree_reduction_all(chunks)
-    ctx = blk._ctx_mean(s)                        # (B, C, D)
-    reader_ctx = ctx[:, -1, :]                    # контекст чанка читателя
-    full = bb(x)                                  # (B, T, D)
+    ctx = blk._ctx_mean(s)
+    reader_ctx = ctx[:, -1, :]
+    full = bb(x)
     reader_h = full[:, -1, :]
     return reader_ctx, reader_h
 
@@ -115,7 +88,6 @@ def extract_tr(bb, x):
 
 
 def linear_probe(feats_tr, y_tr, feats_te, y_te, epochs=400):
-    """Логистическая регрессия на замороженных фичах."""
     f_tr = (feats_tr - feats_tr.mean(0)) / (feats_tr.std(0) + 1e-6)
     f_te = (feats_te - feats_tr.mean(0)) / (feats_tr.std(0) + 1e-6)
     probe = nn.Linear(f_tr.size(1), 16).to(DEVICE)
@@ -132,8 +104,7 @@ def linear_probe(feats_tr, y_tr, feats_te, y_te, epochs=400):
 
 def dataset():
     x, y, V = make_copy(NTR + NTE, T, 1, seed=42)
-    labels = y[:, -1] - 0                        # токен на позиции 127
-    # в make_copy контентные токены 0..15, метка = сам токен
+    labels = y[:, -1] - 0
     return (x[:NTR].to(DEVICE), labels[:NTR].to(DEVICE),
             x[NTR:].to(DEVICE), labels[NTR:].to(DEVICE))
 

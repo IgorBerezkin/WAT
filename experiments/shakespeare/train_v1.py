@@ -30,10 +30,10 @@ class ShakespeareNextTokenLongDataset(Dataset):
         self.data = torch.tensor(data, dtype=torch.long)
         self.seq_len = seq_len
         self.size = max(0, len(data) - seq_len)
-    
+
     def __len__(self):
         return self.size
-    
+
     def __getitem__(self, idx):
         x = self.data[idx:idx + self.seq_len]
         y = self.data[idx + self.seq_len]
@@ -47,7 +47,7 @@ class TransformerLanguageModel(nn.Module):
         encoder_layer = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=n_heads, dim_feedforward=embed_dim*4, batch_first=True)
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=2)
         self.predict = nn.Linear(embed_dim, vocab_size)
-    
+
     def forward(self, x):
         seq_len = x.size(1)
         positions = torch.arange(seq_len, device=x.device).unsqueeze(0)

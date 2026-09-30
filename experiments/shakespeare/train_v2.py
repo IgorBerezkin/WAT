@@ -45,7 +45,7 @@ class TransformerLanguageModel(nn.Module):
         encoder_layer = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=n_heads, dim_feedforward=embed_dim*4, batch_first=True)
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=2)
         self.predict = nn.Linear(embed_dim, vocab_size)
-    
+
     def forward(self, x):
         seq_len = x.size(1)
         positions = torch.arange(seq_len, device=x.device).unsqueeze(0)
@@ -168,13 +168,13 @@ def main():
     print("--- Training WAT ---")
     print("="*60)
     wat = WATModel(vocab_size, ed_wat)
-    wat_acc = train_lm(wat, train_loader, test_loader, epochs, lr, device, "WAT", 
+    wat_acc = train_lm(wat, train_loader, test_loader, epochs, lr, device, "WAT",
                        vocab=vocab, idx_to_char=idx_to_char, weight_decay=weight_decay)
     print("\n" + "="*60)
     print("--- Training Transformer  ---")
     print("="*60)
     trans = TransformerLanguageModel(vocab_size, ed_trans)
-    trans_acc = train_lm(trans, train_loader, test_loader, epochs, lr, device, "Transformer", 
+    trans_acc = train_lm(trans, train_loader, test_loader, epochs, lr, device, "Transformer",
                          vocab=None, idx_to_char=None, weight_decay=weight_decay, do_inference=False)
     print("\n" + "="*60)
     print("RESULTS - Shakespeare Next Token (512)")

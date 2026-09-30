@@ -1,20 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-wat_doctor.py — бенчмарк решений: пять кандидатов против двух открытых проблем.
-Положи рядом с wat_lab.py.  Запуск:
-  python wat_doctor.py                 # всё (~40-55 мин)
-  python wat_doctor.py --run wide      # по одному: wide|gain|attn_pos|ladder_safe|recall_wd
-Цели (из diag_combat): боевой copy v0=18.9% (срезан), потолок TR tiny=40.7%;
-recall v0 = меморизация (train 0.22 / val 12%).
-
-КАНДИДАТЫ (боевой copy T=512, n_mem=16, patience 60):
-  wide        v0 ED192/L2 — доказанный слияниефаз (R2)          кап 160
-  gain        v0 tiny + обучаемый gain инжекции (alpha=8)        кап 200
-  attn_pos    v5 + позиционные эмбеддинги ключей-саммари         кап 160
-  ladder_safe v1-лестница + mean-страховка (0.5/0.5)             кап 160
-RECALL (T=256, 12 пар):
-  recall_wd   v0 tiny, weight_decay=1e-2 против меморизации      кап 120
-"""
 import argparse, sys, time, types
 sys.path.insert(0, ".")
 import torch
@@ -29,11 +12,7 @@ K = 32
 CHANCE = 6.25
 
 
-# --- модификации-кандидаты -------------------------------------------------
-
 class GainedLinear(nn.Module):
-    """alpha * W(x): обучаемая громкость инжекции."""
-
     def __init__(self, lin, alpha0):
         super().__init__()
         self.lin = lin
@@ -44,7 +23,6 @@ class GainedLinear(nn.Module):
 
 
 def _ctx_attn_pos(self, x_padded, s):
-    """v5 + позиционные эмбеддинги ключей (какой чанк говорит)."""
     import math as _m
     B, Tp, D = x_padded.shape
     C = s.size(1)
@@ -64,7 +42,6 @@ def _ctx_attn_pos(self, x_padded, s):
 
 
 def _ctx_ladder_safe(self, s):
-    """0.5*лестница + 0.5*mean: страховочный градиентный хайвей."""
     return 0.5 * WATBlockX._ctx_prefix_tree(self, s) + \
            0.5 * WATBlockX._ctx_mean(self, s)
 
@@ -91,13 +68,11 @@ def build(kind, V, T):
                           dropout=0.0, ctx_mode="prefix_tree", intra=False)
         for blk in bb.layers:
             blk._ctx_prefix_tree = types.MethodType(_ctx_ladder_safe, blk)
-    else:  # recall_wd: обычный v0 tiny
+    else:
         bb = WATBackboneX(V, 96, n_layers=1, chunk_size=K, max_len=T,
                           dropout=0.0, ctx_mode="mean", intra=False)
     return LMModel(bb, V).to(DEVICE)
 
-
-# --- обучение ---------------------------------------------------------------
 
 @torch.no_grad()
 def val_acc(model, xva, yva, bs):

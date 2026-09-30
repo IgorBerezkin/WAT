@@ -1,26 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-wat_night_x.py — ЭКСПЕРИМЕНТАЛЬНЫЙ БЛОК X к ночному бенчмарку (12 механизмов).
-Положи рядом с wat_night.py и wat_lab.py.  Запускается ИЗ wat_night.py
-(см. патч в конце файла wat_night.py) или отдельно:  python wat_night_x.py
-
-КАЖДЫЙ вариант перед обучением проходит: (1) shape-smoke fwd+bwd,
-(2) пробу каузальности. Утечка/креш => помечается и пропускается.
-
-Варианты (все — боевой copy T=512, nm=16, tiny ED96/L1, если не сказано иначе):
-  x_matrix       матричная память чанков: cumsum K(s)xV(s), linear-attn чтение
-  x_kv_rope      токен-уровневые ключ-значение с rotary-ключами (голография)
-  x_aux_ctx      вспомогательный лосс на ctx (мешок увиденных токенов)
-  x_hybrid_attn  WAT L1 + один слой честного attention
-  x_rotor        позиционная распаковка инжекции: W_global(ctx)*(1+P(pos))
-  x_chunk_curr   curriculum по K: 128 -> 64 -> 32 (одна модель)
-  x_registers    обучаемые регистры-слоты в дереве (+6 токенов на чанк)
-  x_ladder_anneal отжиг страховки лестницы 0.1 -> 0.9 за 120 эпох
-  x_gate_bias    линейный старт merge: res_gate bias = -2.5
-  x_ema          двухскоростная память: EMA-канал поверх mean
-  x_echo         эхо-предобучение транспорта (25 эп. плотной супервизии)
-  x_cheatsheet   шпаргалка: uncertainty-гейт u_t * attn(прошлые саммари)
-"""
 import json, math, os, sys, time, traceback, types
 sys.path.insert(0, ".")
 import torch
@@ -51,17 +28,12 @@ def _save(rid, payload):
         json.dump(res, f, indent=1, ensure_ascii=False)
 
 
-# ============================================================================
-# вспомогательное
-# ============================================================================
-
 def rope(x, pos):
-    """Rotary: поворот пар измерений фазой позиции. x:(...,D), pos:(...,)"""
     D = x.size(-1)
     half = D // 2
     freqs = torch.exp(-math.log(10000.0) *
                       torch.arange(half, device=x.device) / half)
-    ang = pos.unsqueeze(-1).float() * freqs          # (..., half)
+    ang = pos.unsqueeze(-1).float() * freqs
     cos, sin = ang.cos(), ang.sin()
     x1, x2 = x[..., :half], x[..., half:2 * half]
     out = torch.cat([x1 * cos - x2 * sin, x1 * sin + x2 * cos,
@@ -79,13 +51,7 @@ class GainedLinear(nn.Module):
         return self.alpha * self.lin(x)
 
 
-# ============================================================================
-# кастомные блоки (forward скопирован из WATBlockX с точечными вставками)
-# ============================================================================
-
 class BaseXBlock(WATBlockX):
-    """База: forward v0-mean с хуком инжекции self._inject(...)"""
-
     def __init__(self, d, chunk_size=K0):
         super().__init__(d, chunk_size, ctx_mode="mean", intra=False)
 
@@ -119,8 +85,6 @@ class BaseXBlock(WATBlockX):
 
 
 class MatrixBlock(BaseXBlock):
-    """x_matrix: память = cumsum по чанкам от K(s) (x) V(s); чтение q*M."""
-
     def __init__(self, d, chunk_size=K0):
         super().__init__(d, chunk_size)
         self.Wk = nn.Linear(d, d)
@@ -130,17 +94,17 @@ class MatrixBlock(BaseXBlock):
     def _make_ctx(self, x_padded, s):
         B, Tp, D = x_padded.shape
         C = s.size(1)
-        k = F.elu(self.Wk(s)) + 1.0                       # (B,C,D)
+        k = F.elu(self.Wk(s)) + 1.0
         v = self.Wv(s)
-        kv = torch.einsum("bcd,bce->bcde", k, v)          # (B,C,D,D)
+        kv = torch.einsum("bcd,bce->bcde", k, v)
         M = torch.cumsum(kv, dim=1)
         M = torch.cat([torch.zeros_like(M[:, :1]), M[:, :-1]], dim=1)
         z = torch.cumsum(k, dim=1)
         z = torch.cat([torch.zeros_like(z[:, :1]), z[:, :-1]], dim=1)
-        q = F.elu(self.Wq(x_padded)) + 1.0                # (B,Tp,D)
+        q = F.elu(self.Wq(x_padded)) + 1.0
         outs = []
         for i in range(C):
-            qi = q[:, i * self.K:(i + 1) * self.K]        # (B,K,D)
+            qi = q[:, i * self.K:(i + 1) * self.K]
             num = torch.einsum("bkd,bde->bke", qi, M[:, i])
             den = torch.einsum("bkd,bd->bk", qi, z[:, i]).unsqueeze(-1) + 1e-4
             outs.append(num / den)
@@ -148,8 +112,6 @@ class MatrixBlock(BaseXBlock):
 
 
 class KVRopeBlock(BaseXBlock):
-    """x_kv_rope: токен-уровневые k(x)xv(x) с rotary-фазами (голография)."""
-
     def __init__(self, d, chunk_size=K0):
         super().__init__(d, chunk_size)
         self.Wk = nn.Linear(d, d)
@@ -161,11 +123,11 @@ class KVRopeBlock(BaseXBlock):
         K = self.K
         C = Tp // K
         pos = torch.arange(Tp, device=x_padded.device)
-        k = rope(self.Wk(x_padded), pos) / math.sqrt(D)   # (B,Tp,D)
+        k = rope(self.Wk(x_padded), pos) / math.sqrt(D)
         v = self.Wv(x_padded)
         kc = k.view(B, C, K, D)
         vc = v.view(B, C, K, D)
-        Mc = torch.einsum("bckd,bcke->bcde", kc, vc)      # по-чанково
+        Mc = torch.einsum("bckd,bcke->bcde", kc, vc)
         M = torch.cumsum(Mc, dim=1)
         M = torch.cat([torch.zeros_like(M[:, :1]), M[:, :-1]], dim=1)
         q = rope(self.Wq(x_padded), pos)
@@ -178,8 +140,6 @@ class KVRopeBlock(BaseXBlock):
 
 
 class RotorBlock(BaseXBlock):
-    """x_rotor: позиционная распаковка общего контекста."""
-
     def __init__(self, d, chunk_size=K0, max_len=1024):
         super().__init__(d, chunk_size)
         self.rotor = nn.Embedding(max_len, d)
@@ -191,11 +151,9 @@ class RotorBlock(BaseXBlock):
 
 
 class EMABlock(BaseXBlock):
-    """x_ema: второй канал — EMA по саммари с обучаемым decay."""
-
     def __init__(self, d, chunk_size=K0):
         super().__init__(d, chunk_size)
-        self.decay_logit = nn.Parameter(torch.full((d,), 2.0))  # lam~0.88
+        self.decay_logit = nn.Parameter(torch.full((d,), 2.0))
         self.We = nn.Linear(d, d)
         nn.init.normal_(self.We.weight, 0.0, 0.01)
         nn.init.zeros_(self.We.bias)
@@ -216,8 +174,6 @@ class EMABlock(BaseXBlock):
 
 
 class CheatBlock(BaseXBlock):
-    """x_cheatsheet: mean-хайвей + u_t * attn(прошлые саммари), u стартует ~0."""
-
     def __init__(self, d, chunk_size=K0):
         super().__init__(d, chunk_size)
         self.W_q = nn.Linear(d, d)
@@ -226,12 +182,12 @@ class CheatBlock(BaseXBlock):
         self.null_summary = nn.Parameter(torch.zeros(1, 1, d))
         self.u_head = nn.Linear(d, 1)
         nn.init.zeros_(self.u_head.weight)
-        nn.init.constant_(self.u_head.bias, -2.0)         # почти закрыт
+        nn.init.constant_(self.u_head.bias, -2.0)
 
     def _make_ctx(self, x_padded, s):
         B, Tp, D = x_padded.shape
         C = s.size(1)
-        base = super()._make_ctx(x_padded, s)             # mean-хайвей
+        base = super()._make_ctx(x_padded, s)
         kv = torch.cat([self.null_summary.expand(B, 1, D).to(s.dtype), s], 1)
         q = self.W_q(x_padded)
         k, v = self.W_k(kv), self.W_v(kv)
@@ -247,8 +203,6 @@ class CheatBlock(BaseXBlock):
 
 
 class HybridBackbone(nn.Module):
-    """x_hybrid_attn: WAT L1 + один attention-блок."""
-
     def __init__(self, vocab, d=96, max_len=512):
         super().__init__()
         self.embed_dim = d
@@ -279,10 +233,6 @@ class HybridBackbone(nn.Module):
         h = h + self.ffn(self.norm_f(h))
         return self.output_norm(h)
 
-
-# ============================================================================
-# сборка бэкбонов
-# ============================================================================
 
 def make_backbone(kind, V, T):
     torch.manual_seed(42)
@@ -347,17 +297,12 @@ def make_backbone(kind, V, T):
                 (1 - w) * WATBlockX._ctx_mean(self, s)
         blk._ctx_prefix_tree = types.MethodType(safe, blk)
         return bb
-    # x_chunk_curr, x_echo, x_aux_ctx используют обычный v0 (+gain)
     bb = WATBackboneX(V, d, n_layers=1, chunk_size=K0, max_len=T,
                       dropout=0.0, ctx_mode="mean", intra=False)
     if kind in ("x_chunk_curr", "x_echo"):
         bb.layers[0].W_global = GainedLinear(bb.layers[0].W_global, 8.0)
     return bb
 
-
-# ============================================================================
-# самопроверка варианта
-# ============================================================================
 
 def verify(kind, V):
     bb = make_backbone(kind, V, 160)
@@ -380,10 +325,6 @@ def verify(kind, V):
                 return False, p
     return True, None
 
-
-# ============================================================================
-# обучение
-# ============================================================================
 
 @torch.no_grad()
 def val_acc(model, xva, yva, bs):
@@ -457,10 +398,6 @@ def guarded(rid, fn):
         torch.cuda.empty_cache()
 
 
-# ============================================================================
-# прогоны блока X
-# ============================================================================
-
 def run_block_x():
     xtr, ytr, V = make_copy(4000, 512, 16, seed=42)
     xva, yva, _ = make_copy(1000, 512, 16, seed=43)
@@ -519,7 +456,7 @@ def run_block_x():
             return {"LEAK": pos}
         m = LMModel(make_backbone("x_echo", V, 512), V).to(DEVICE)
         y_echo = torch.full_like(xtr, -100)
-        y_echo[:, 64:] = xtr[:, :-64]                 # эхо: токен 2 чанка назад
+        y_echo[:, 64:] = xtr[:, :-64]
         r1 = train("x_echo фаза-эхо", m, xtr, y_echo, xva, yva, 128, 25,
                    patience=25)
         r2 = train("x_echo фаза-copy", m, xtr, ytr, xva, yva, 128, 200)
@@ -543,10 +480,10 @@ def run_block_x():
         blk._ctx_mean = types.MethodType(stash, blk)
         model = LMModel(bb, V).to(DEVICE)
         aux_head = nn.Linear(96, 16).to(DEVICE)
-        model.aux_head = aux_head                      # в оптимизатор
+        model.aux_head = aux_head
 
         def aux_fn(m, xb):
-            ctx = m.backbone.layers[0]._ctx_last       # (B, C, D)
+            ctx = m.backbone.layers[0]._ctx_last
             B, C, D = ctx.shape
             onehot = F.one_hot(xb.clamp(max=16), 17)[..., :16].float()
             per_chunk = onehot.view(B, C, -1, 16).sum(2)

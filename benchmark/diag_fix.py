@@ -1,20 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-diag_fix.py — открываем клапан: три кандидата-фикса на канарейке copy n_mem=1.
-Положи рядом с wat_lab.py.  Запуск:  python diag_fix.py
-GPU ~5-8 минут (CPU ~30-40). Сначала сам делает 10-секундный shape-smoke.
-
-Конфигурации (все на бэкбоне v0, ctx=mean — механизм доставки НЕ меняем,
-чиним формирование/чтение сигнала):
-  C0 as-is      — контроль, ожидаем плато на шансе
-  C1 sum-res    — residual в merge = left+right (линейная полоса, ген 1.0)
-  C2 sum+inj8   — C1 + веса W_global x8 (инжекция 4.7% -> ~40%)
-  C3 lane       — value lane: s = tree(x) + Σ σ(g(x_k))·V(x_k)/√K
-  C4 full       — C1 + C2 + C3
-
-Канарейка: copy T=128, n_mem=1 (шанс 6.25%). Если конфиг пробивает >40% —
-он же гоняется на n_mem=4. Успех = клапан открыт, тащим фикс в wat_lab.
-"""
 import sys, time, math, types
 sys.path.insert(0, ".")
 import torch
@@ -37,15 +20,14 @@ class GLUMergeSumRes(GLUMerge):
         gate = torch.sigmoid(self.W_gate(combined))
         merged = self.norm(val * gate)
         res_gate = torch.sigmoid(self.W_res(combined))
-        residual = left + right                      # сумма, не среднее
+        residual = left + right
         return res_gate * merged + (1.0 - res_gate) * residual
 
 
 def _tree_with_lane(self, chunks):
-    """Заменяет _tree_reduction_all: дерево + линейная value-полоса."""
-    s = WATBlockX._tree_reduction_all(self, chunks)          # (B, C, D)
-    g = torch.sigmoid(self.lane_g(chunks))                   # (B, C, K, 1)
-    v = self.lane_v(chunks)                                  # (B, C, K, D)
+    s = WATBlockX._tree_reduction_all(self, chunks)
+    g = torch.sigmoid(self.lane_g(chunks))
+    v = self.lane_v(chunks)
     lane = (g * v).sum(dim=2) / math.sqrt(chunks.size(2))
     return s + lane
 

@@ -1,23 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-diag_marathon.py — финальный тест теории "тихий сигнал + время = обучение".
-Положи рядом с wat_lab.py.  Запуск:  python diag_marathon.py
-GPU ~5-10 мин. Всё в fp32, без autocast (убираем bf16-конфаундер).
-
-ЗАБЕГ 1 — марафон головы: бэкбон заморожен (init как в анатомии, seed 42),
-  hidden@reader кэшируется один раз, голова учится 500 full-batch эпох,
-  lr 1e-2. Условия головы = e2e (сырые фичи, 18 классов, без стандартизации);
-  единственное отличие от прежних провалов — БЮДЖЕТ.
-ЗАБЕГ 2 — марафон e2e: бэкбон разморожен, 250 эпох, bs 256,
-  head lr 1e-2 / бэкбон 3e-4. Телеметрия каждые 25 эпох: dSig — амплитуда
-  следа токена на входе головы (растит бэкбон громкость или глушит).
-
-КРИТЕРИИ (зафиксированы до прогона):
-  забег 1 >= 40%  -> теория amplitude-limited optimization ПОДТВЕРЖДЕНА
-  15-40%          -> частично, ищем что доедает
-  < 15%           -> теория неверна, назад к колбе
-  ориентир-потолок: проба на этих же фичах давала 53.1% (слепая зона)
-"""
 import sys, math, time
 sys.path.insert(0, ".")
 import torch
@@ -34,7 +14,7 @@ CHANCE = 6.25
 
 
 def fresh_backbone(V):
-    torch.manual_seed(42)                     # тот же init, что видела колба
+    torch.manual_seed(42)
     return WATBackboneX(V, ED, n_layers=1, chunk_size=K, max_len=T,
                         dropout=0.0, ctx_mode="mean", intra=False)
 
@@ -42,7 +22,7 @@ def fresh_backbone(V):
 def data():
     xtr, ytr, V = make_copy(NTR, T, 1, seed=42)
     xva, yva, _ = make_copy(NTE, T, 1, seed=43)
-    lab_tr = ytr[:, -1]                       # значение токена = метка 0..15
+    lab_tr = ytr[:, -1]
     lab_va = yva[:, -1]
     return (xtr.to(DEVICE), lab_tr.to(DEVICE),
             xva.to(DEVICE), lab_va.to(DEVICE), V)
@@ -59,7 +39,6 @@ def reader_features(bb, x, bs=256):
 
 @torch.no_grad()
 def dsig_at_head(bb, x_probe, pos_probe):
-    """Амплитуда следа токена на входе головы, % от потока."""
     bb.eval()
     ar = torch.arange(x_probe.size(0), device=DEVICE)
     x2 = x_probe.clone()
@@ -114,7 +93,6 @@ def race2():
     print("ЗАБЕГ 2 — марафон e2e (бэкбон разморожен, 250 эпох, bs 256)")
     print("=" * 70)
     xtr, ytr, xva, yva, V = data()
-    # для dSig-телеметрии нужен полный x с позициями токена
     x_raw, _, _ = make_copy(256, T, 1, seed=77)
     x_probe = x_raw.to(DEVICE)
     pos_probe = (x_probe[:, :T - 1] != 16).float().argmax(dim=1)

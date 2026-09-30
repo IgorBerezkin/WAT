@@ -1,24 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-diag_head.py — вердикт: голова недоучена или бэкбон стирает сигнал?
-Положи рядом с wat_lab.py и wat_anatomy.py.  Запуск:  python diag_head.py
-GPU ~4-6 мин. Канарейка: copy T=128, n_mem=1, v0, L=1 (условия анатомии;
-проба показала: линейное решение на входе головы СУЩЕСТВУЕТ, ~53% all).
-
-E1  ЗАМОРОЖЕННЫЙ БЭКБОН, учится только голова:
-      рецепт A — как в e2e (lr 3e-4, bs 32, 15 эпох)
-      рецепт B — как проба   (lr 1e-2, bs 256, 30 эпох)
-E2  ПОЛНЫЙ E2E, но голове lr x33 (head 1e-2, остальное 3e-4)
-E3  SNR НА ПЛАТО: обучаем e2e 2 эпохи, снова меряем градиентный SNR
-      (сравнить с init-числами из wat_anatomy)
-
-ДЕРЕВО ВЫВОДОВ:
-  E1-B >> 40%, E1-A низко  -> голова недоучена (lr/шаги); лечится тренировкой
-  E1-B >> 40%, E2 низко    -> + бэкбон-дрейф мешает при разморозке
-  E1-B тоже низко           -> проба видела то, что SGD-голова не берёт
-                               (шлём вывод, копаем формулировку лосса)
-  E3: SNR WAT рухнул к ~0   -> подтверждение "плато = исчезнувший градиент"
-"""
 import sys, time
 sys.path.insert(0, ".")
 import torch
@@ -43,7 +22,7 @@ def data(bs_train):
 
 
 def fresh_wat(V):
-    torch.manual_seed(42)                       # тот же init, что в анатомии
+    torch.manual_seed(42)
     return WATBackboneX(V, ED, n_layers=1, chunk_size=K, max_len=T,
                         dropout=0.0, ctx_mode="mean", intra=False)
 
@@ -110,7 +89,6 @@ def e3():
     print("=" * 70)
     print("E3 — SNR НА ПЛАТО (после 2 эпох e2e; сравни с init из анатомии)")
     print("=" * 70)
-    # WAT
     tl, vl, V = data(32)
     wat = LMModel(fresh_wat(V), V).to(DEVICE)
     opt = torch.optim.Adam(wat.parameters(), lr=3e-4)
@@ -118,7 +96,6 @@ def e3():
     xs, ys, _ = make_copy(16 * 12, T, 1, seed=100)
     snr_w = gradient_snr(wat, grad_groups_wat(wat),
                          xs.to(DEVICE), ys.to(DEVICE), 16)
-    # transformer
     torch.manual_seed(42)
     tr = LMModel(TransformerBackbone(V, ED, n_layers=1, max_len=T,
                                      dropout=0.0), V).to(DEVICE)
