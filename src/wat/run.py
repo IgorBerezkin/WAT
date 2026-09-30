@@ -13,7 +13,7 @@ import time
 import torch
 import torch.nn.functional as F
 
-from wat.data import build_task
+from wat.data import build_task, resolve_task
 from wat.lab import (LMModel, LSTMBackbone, TransformerBackbone, WATBackboneX,
                      make_sched, match_embed_dim, n_params)
 
@@ -47,7 +47,9 @@ def set_path(cfg, dotted, value):
 
 
 def resolve(cfg):
-    return merge(DEFAULTS, cfg)
+    cfg = merge(DEFAULTS, cfg)
+    cfg["task"] = resolve_task(cfg["task"])
+    return cfg
 
 
 def config_group(cfg):

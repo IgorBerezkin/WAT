@@ -7,7 +7,7 @@ from collections import Counter, defaultdict
 
 import torch
 
-from wat.data import read_shakespeare, shakespeare_splits
+from wat.data import read_shakespeare, resolve_task, shakespeare_splits
 from wat.run import atomic_json, config_group, environment
 
 
@@ -67,7 +67,7 @@ def main(argv=None):
     orders = range(int(lo), int(hi or lo) + 1)
     data, vocab = read_shakespeare()
     splits = shakespeare_splits(data, args.split)
-    task = {"name": "shakespeare", "split": args.split, "seq_len": args.seq_len}
+    task = resolve_task({"name": "shakespeare", "split": args.split, "seq_len": args.seq_len})
     t0 = time.time()
     model = NGram(splits["train"], max(orders), vocab)
     build_time = time.time() - t0

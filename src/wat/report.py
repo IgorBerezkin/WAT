@@ -16,8 +16,12 @@ def collect(root):
     return rows
 
 
+TASK_KEYS = {"shakespeare": ("split", "seq_len"), "copy": ("seq_len", "n_mem"),
+             "recall": ("seq_len", "n_pairs")}
+
+
 def describe_task(task):
-    extras = [f"{k}={v}" for k, v in sorted(task.items()) if k != "name"]
+    extras = [f"{k}={task[k]}" for k in TASK_KEYS.get(task["name"], ()) if k in task]
     return task["name"] + (f" ({', '.join(extras)})" if extras else "")
 
 

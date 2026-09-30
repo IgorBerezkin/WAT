@@ -9,6 +9,20 @@ from wat.lab import make_copy, make_recall
 SHAKESPEARE_URL = ("https://raw.githubusercontent.com/karpathy/char-rnn/"
                    "master/data/tinyshakespeare/input.txt")
 
+TASK_DEFAULTS = {
+    "shakespeare": {"split": "full", "seq_len": 512},
+    "copy": {"seq_len": 512, "n_mem": 16, "n_train": 6000, "n_val": 1000, "n_test": 1000,
+             "data_seed": 42},
+    "recall": {"seq_len": 256, "n_pairs": 12, "n_train": 6000, "n_val": 1000, "n_test": 1000,
+               "data_seed": 42},
+}
+
+
+def resolve_task(cfg):
+    if cfg["name"] not in TASK_DEFAULTS:
+        raise ValueError(f"unknown task: {cfg['name']}")
+    return {"name": cfg["name"], **TASK_DEFAULTS[cfg["name"]], **cfg}
+
 
 def data_root():
     return os.environ.get("WAT_DATA_DIR", "data")
@@ -19,7 +33,9 @@ def read_shakespeare(root=None):
     path = os.path.join(root, "shakespeare.txt")
     if not os.path.exists(path):
         os.makedirs(root, exist_ok=True)
-        urllib.request.urlretrieve(SHAKESPEARE_URL, path)
+        tmp = f"{path}.{os.getpid()}.tmp"
+        urllib.request.urlretrieve(SHAKESPEARE_URL, tmp)
+        os.replace(tmp, path)
     text = open(path, encoding="utf-8").read()
     index = {c: i for i, c in enumerate(sorted(set(text)))}
     return np.array([index[c] for c in text], dtype=np.int64), len(index)
@@ -80,22 +96,14 @@ class SequenceTask:
 
 
 def build_task(cfg):
-    name = cfg["name"]
-    if name == "shakespeare":
+    cfg = resolve_task(cfg)
+    if cfg["name"] == "shakespeare":
         data, vocab = read_shakespeare()
-        return LMTask(shakespeare_splits(data, cfg.get("split", "full")), vocab,
-                      cfg.get("seq_len", 512))
-    if name in ("copy", "recall"):
-        seq_len = cfg.get("seq_len", 512 if name == "copy" else 256)
-        seed = cfg.get("data_seed", 42)
-        sizes = {"train": cfg.get("n_train", 6000), "val": cfg.get("n_val", 1000),
-                 "test": cfg.get("n_test", 1000)}
-        splits, vocab = {}, None
-        for offset, split in enumerate(("train", "val", "test")):
-            if name == "copy":
-                x, y, vocab = make_copy(sizes[split], seq_len, cfg.get("n_mem", 16), seed + offset)
-            else:
-                x, y, vocab = make_recall(sizes[split], seq_len, cfg.get("n_pairs", 12), seed + offset)
-            splits[split] = (x, y)
-        return SequenceTask(splits, vocab)
-    raise ValueError(f"unknown task: {name}")
+        return LMTask(shakespeare_splits(data, cfg["split"]), vocab, cfg["seq_len"])
+    make = make_copy if cfg["name"] == "copy" else make_recall
+    size_key = "n_mem" if cfg["name"] == "copy" else "n_pairs"
+    splits, vocab = {}, None
+    for offset, split in enumerate(("train", "val", "test")):
+        x, y, vocab = make(cfg[f"n_{split}"], cfg["seq_len"], cfg[size_key], cfg["data_seed"] + offset)
+        splits[split] = (x, y)
+    return SequenceTask(splits, vocab)
