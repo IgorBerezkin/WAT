@@ -16,8 +16,8 @@ def collect(root):
     return rows
 
 
-TASK_KEYS = {"shakespeare": ("split", "seq_len"), "copy": ("seq_len", "n_mem"),
-             "recall": ("seq_len", "n_pairs")}
+TASK_KEYS = {"shakespeare": ("split", "seq_len"), "enwik8": ("seq_len",),
+             "copy": ("seq_len", "n_mem"), "recall": ("seq_len", "n_pairs")}
 
 
 def describe_task(task):
@@ -29,10 +29,17 @@ def describe_model(metrics):
     model = metrics["config"]["model"]
     name = model["name"]
     if name == "wat":
-        name += f"[{model['ctx_mode']}{'+intra' if model.get('intra') else ''}]"
+        extra = "".join(f"+{model[k]}" for k in ("inject", "conv") if k in model)
+        name += f"[{model['ctx_mode']}{'+intra' if model.get('intra') else ''}{extra}]"
     if name == "ngram":
         return f"ngram[n={model['order']}]"
-    return f"{name} d={metrics.get('embed_dim')} L={model.get('n_layers')}"
+    lr = metrics["config"].get("train", {}).get("lr")
+    suffix = f" lr={lr:g}" if lr is not None else ""
+    if metrics["config"].get("name"):
+        name = metrics["config"]["name"]
+    if name in ("wat_v2", "wat_v3"):
+        return f"{name} d={metrics.get('embed_dim')}{suffix}"
+    return f"{name} d={metrics.get('embed_dim')} L={model.get('n_layers')}{suffix}"
 
 
 def mean_std(values):

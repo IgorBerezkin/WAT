@@ -14,8 +14,9 @@ import torch
 import torch.nn.functional as F
 
 from wat.data import build_task, resolve_task
-from wat.lab import (LMModel, LSTMBackbone, TransformerBackbone, WATBackboneX,
-                     make_sched, match_embed_dim, n_params)
+from wat.lab import (LMModel, LSTMBackbone, MambaBackbone, TransformerBackbone,
+                     WATBackboneX, make_sched, match_embed_dim, n_params)
+from wat.models import WATV2Model, WATV3Model
 
 DEFAULTS = {
     "task": {"name": "shakespeare"},
@@ -62,8 +63,12 @@ def run_name(cfg):
     tag = model["name"]
     if model["name"] == "wat":
         tag += f"-{model['ctx_mode']}" + ("-intra" if model.get("intra") else "")
+        tag += "".join(f"-{k}{model[k]}" for k in WAT_EXTRA if k in model)
     prefix = cfg.get("name") or f"{cfg['task']['name']}_{tag}"
     return f"{prefix}_{config_group(cfg)}_s{cfg['seed']}"
+
+
+WAT_EXTRA = ("inject", "conv", "leaf", "conv_k", "ctx_norm", "merge2", "read", "pos", "mem", "ptr")
 
 
 def build_model(mcfg, vocab, max_len, seed):
@@ -73,11 +78,19 @@ def build_model(mcfg, vocab, max_len, seed):
         if kind == "wat":
             backbone = WATBackboneX(vocab, embed_dim, chunk_size=mcfg["chunk_size"],
                                     max_len=max_len, ctx_mode=mcfg["ctx_mode"],
-                                    intra=mcfg["intra"], **common)
+                                    intra=mcfg["intra"], **common,
+                                    **{k: mcfg[k] for k in WAT_EXTRA if k in mcfg})
         elif kind == "transformer":
-            backbone = TransformerBackbone(vocab, embed_dim, max_len=max_len, **common)
+            backbone = TransformerBackbone(vocab, embed_dim, max_len=max_len, ptr=mcfg.get("ptr"), **common,
+                                           **{k: mcfg[k] for k in ("pos", "ffn", "attn") if k in mcfg})
         elif kind == "lstm":
             backbone = LSTMBackbone(vocab, embed_dim, **common)
+        elif kind == "mamba":
+            backbone = MambaBackbone(vocab, embed_dim, **common)
+        elif kind == "wat_v2":
+            return WATV2Model(vocab, embed_dim, max_len=max_len)
+        elif kind == "wat_v3":
+            return WATV3Model(vocab, embed_dim, max_len=max_len, chunk_size=mcfg["chunk_size"])
         else:
             raise ValueError(f"unknown model: {kind}")
         return LMModel(backbone, vocab)
@@ -105,9 +118,11 @@ def autocast(device, precision):
 
 
 @torch.no_grad()
-def evaluate(model, task, split, device, precision, batch_size, max_batches=None):
+def evaluate(model, task, split, device, precision, batch_size, max_batches=None,
+             positional=False):
     model.eval()
     nll, correct, count = 0.0, 0, 0
+    pos_nll, pos_count = 0, 0
     for x, y in task.eval_batches(split, batch_size, max_batches):
         x, y = x.to(device), y.to(device)
         with autocast(device, precision):
@@ -118,8 +133,16 @@ def evaluate(model, task, split, device, precision, batch_size, max_batches=None
                                ignore_index=-100, reduction="sum").item()
         correct += (logits.argmax(-1)[mask] == y[mask]).sum().item()
         count += mask.sum().item()
+        if positional:
+            tok = F.cross_entropy(logits.transpose(1, 2), y, ignore_index=-100, reduction="none")
+            pos_nll = pos_nll + tok.double().sum(0)
+            pos_count = pos_count + mask.sum(0)
     model.train()
-    return {"bpc": nll / max(1, count) / math.log(2), "acc": correct / max(1, count)}
+    out = {"bpc": nll / max(1, count) / math.log(2), "acc": correct / max(1, count)}
+    if positional:
+        pos = pos_nll / pos_count.clamp(min=1) / math.log(2)
+        out["pos_bpc"] = [round(v, 4) for v in pos.tolist()]
+    return out
 
 
 def git_info():
@@ -247,8 +270,9 @@ def run(cfg, out_root, device=None, deadline=None, log=print):
                 return {"status": "interrupted", "name": name, "step": state["step"]}
 
     model.load_state_dict(torch.load(best_path, map_location=device, weights_only=True))
-    val = evaluate(model, task, "val", device, precision, tcfg["eval_batch_size"])
-    test = evaluate(model, task, "test", device, precision, tcfg["eval_batch_size"])
+    final = tcfg.get("final_eval_batches")
+    val = evaluate(model, task, "val", device, precision, tcfg["eval_batch_size"], final, positional=True)
+    test = evaluate(model, task, "test", device, precision, tcfg["eval_batch_size"], final, positional=True)
     metrics = {
         "status": "done", "name": name, "group": config_group(cfg), "config": cfg,
         "params": params, "embed_dim": embed_dim,
@@ -257,8 +281,15 @@ def run(cfg, out_root, device=None, deadline=None, log=print):
                    "best_step": state["best"]["step"]},
         "train_time_s": round(state["train_time"], 1),
         "tokens_seen": state["step"] * tcfg["batch_size"] * task.seq_len,
-        "curve": state["curve"], "env": environment(device),
+        "curve": state["curve"], "positional": {"val": val["pos_bpc"], "test": test["pos_bpc"]},
+        "env": environment(device),
     }
+    if tcfg.get("diag"):
+        from wat.diagnose import diagnose
+        metrics["diagnostics"] = diagnose(model, task, device, lambda: autocast(device, precision),
+                                          tcfg["eval_batch_size"], 4000 if tcfg["diag"] is True else int(tcfg["diag"]))
+    if tcfg.get("keep_model"):
+        atomic_torch(os.path.join(out, "model.pt"), model.state_dict())
     atomic_json(metrics_path, metrics)
     for path in (ckpt_path, best_path):
         if os.path.exists(path):

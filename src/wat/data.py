@@ -1,5 +1,6 @@
 import os
 import urllib.request
+import zipfile
 
 import numpy as np
 import torch
@@ -8,9 +9,11 @@ from wat.lab import make_copy, make_recall
 
 SHAKESPEARE_URL = ("https://raw.githubusercontent.com/karpathy/char-rnn/"
                    "master/data/tinyshakespeare/input.txt")
+ENWIK8_URL = "http://mattmahoney.net/dc/enwik8.zip"
 
 TASK_DEFAULTS = {
     "shakespeare": {"split": "full", "seq_len": 512},
+    "enwik8": {"seq_len": 512},
     "copy": {"seq_len": 512, "n_mem": 16, "n_train": 6000, "n_val": 1000, "n_test": 1000,
              "data_seed": 42},
     "recall": {"seq_len": 256, "n_pairs": 12, "n_train": 6000, "n_val": 1000, "n_test": 1000,
@@ -41,6 +44,36 @@ def read_shakespeare(root=None):
     return np.array([index[c] for c in text], dtype=np.int64), len(index)
 
 
+def read_enwik8(root=None):
+    root = root or data_root()
+    path = os.path.join(root, "enwik8")
+    if not os.path.exists(path):
+        os.makedirs(root, exist_ok=True)
+        archive = f"{path}.{os.getpid()}.zip"
+        urllib.request.urlretrieve(ENWIK8_URL, archive)
+        with zipfile.ZipFile(archive) as z:
+            payload = z.read("enwik8")
+        tmp = f"{path}.{os.getpid()}.tmp"
+        with open(tmp, "wb") as f:
+            f.write(payload)
+        os.replace(tmp, path)
+        os.remove(archive)
+    return np.fromfile(path, dtype=np.uint8), 256
+
+
+def enwik8_splits(data):
+    return {"train": data[:90_000_000], "val": data[90_000_000:95_000_000],
+            "test": data[95_000_000:100_000_000]}
+
+
+def lm_splits(cfg):
+    if cfg["name"] == "shakespeare":
+        data, vocab = read_shakespeare()
+        return shakespeare_splits(data, cfg["split"]), vocab
+    data, vocab = read_enwik8()
+    return enwik8_splits(data), vocab
+
+
 def shakespeare_splits(data, split):
     if split == "full":
         n = len(data)
@@ -62,7 +95,7 @@ class LMTask:
         data = self.splits["train"]
         starts = torch.randint(0, len(data) - self.seq_len - 1, (batch_size,),
                                generator=generator)
-        window = data[starts[:, None] + torch.arange(self.seq_len + 1)]
+        window = data[starts[:, None] + torch.arange(self.seq_len + 1)].long()
         return window[:, :-1], window[:, 1:]
 
     def eval_batches(self, split, batch_size, max_batches=None):
@@ -72,7 +105,7 @@ class LMTask:
         for i, lo in enumerate(range(0, len(starts), batch_size)):
             if max_batches is not None and i >= max_batches:
                 break
-            window = data[starts[lo:lo + batch_size, None] + offsets]
+            window = data[starts[lo:lo + batch_size, None] + offsets].long()
             yield window[:, :-1], window[:, 1:]
 
 
@@ -97,9 +130,9 @@ class SequenceTask:
 
 def build_task(cfg):
     cfg = resolve_task(cfg)
-    if cfg["name"] == "shakespeare":
-        data, vocab = read_shakespeare()
-        return LMTask(shakespeare_splits(data, cfg["split"]), vocab, cfg["seq_len"])
+    if cfg["name"] in ("shakespeare", "enwik8"):
+        splits, vocab = lm_splits(cfg)
+        return LMTask(splits, vocab, cfg["seq_len"])
     make = make_copy if cfg["name"] == "copy" else make_recall
     size_key = "n_mem" if cfg["name"] == "copy" else "n_pairs"
     splits, vocab = {}, None

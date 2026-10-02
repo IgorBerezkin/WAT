@@ -28,18 +28,33 @@ def expand(spec):
     return configs
 
 
+def claim(out, name, token):
+    path = os.path.join(out, name)
+    if os.path.exists(os.path.join(path, "metrics.json")):
+        return False
+    os.makedirs(path, exist_ok=True)
+    try:
+        os.close(os.open(os.path.join(path, f"claim-{token}"), os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+        return True
+    except FileExistsError:
+        return False
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Run a sweep of WAT experiments.")
     parser.add_argument("spec")
     parser.add_argument("--out", default="results/runs")
     parser.add_argument("--shard", type=int, default=0)
     parser.add_argument("--num-shards", type=int, default=1)
+    parser.add_argument("--claim", default=None, metavar="TOKEN")
     parser.add_argument("--time-limit", type=float, default=None, metavar="HOURS")
     parser.add_argument("--device", default=None)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     with open(args.spec, encoding="utf-8") as f:
-        configs = expand(json.load(f))[args.shard::args.num_shards]
+        configs = expand(json.load(f))
+    if not args.claim:
+        configs = configs[args.shard::args.num_shards]
     deadline = time.time() + args.time_limit * 3600 if args.time_limit else None
     if args.dry_run:
         for cfg in configs:
@@ -48,9 +63,11 @@ def main(argv=None):
     status = {"done": 0, "interrupted": 0, "failed": 0}
     for i, cfg in enumerate(configs, 1):
         if deadline is not None and time.time() > deadline:
-            status["interrupted"] += len(configs) - i + 1
+            status["interrupted"] += 1
             break
-        print(f"=== run {i}/{len(configs)} (shard {args.shard}/{args.num_shards})", flush=True)
+        if args.claim and not claim(args.out, run_name(resolve(cfg)), args.claim):
+            continue
+        print(f"=== run {i}/{len(configs)}: {run_name(resolve(cfg))}", flush=True)
         try:
             result = run(cfg, args.out, device=args.device, deadline=deadline,
                          log=lambda msg: print(msg, flush=True))
