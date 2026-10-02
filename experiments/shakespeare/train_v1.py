@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-from wat.models.wat_v1 import WATModel
+from wat.history.paper.wat_v1 import WATModel
 
 np.random.seed(42)
 torch.manual_seed(42)

@@ -4,8 +4,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-from wat.lab import (WATBlockX, WATBackboneX, GLUMerge, LMModel, make_copy,
-                     evaluate, n_params)
+from wat.common import GLUMerge, LMModel, n_params
+from wat.data import make_copy
+from wat.history.lab import WATBlockX, WATBackboneX, evaluate
 
 torch.manual_seed(42)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")

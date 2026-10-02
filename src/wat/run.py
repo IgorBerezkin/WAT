@@ -13,10 +13,12 @@ import time
 import torch
 import torch.nn.functional as F
 
+from wat.baselines import LSTMBackbone, MambaBackbone, TransformerBackbone
+from wat.common import LMModel, make_sched, match_embed_dim, n_params
 from wat.data import build_task, resolve_task
-from wat.lab import (LMModel, LSTMBackbone, MambaBackbone, TransformerBackbone,
-                     WATBackboneX, make_sched, match_embed_dim, n_params)
-from wat.models import WATV2Model, WATV3Model
+from wat.history.lab import WATBackboneX
+from wat.history.paper import WATV2Model, WATV3Model
+from wat.main import MainBackbone
 
 DEFAULTS = {
     "task": {"name": "shakespeare"},
@@ -75,7 +77,10 @@ def build_model(mcfg, vocab, max_len, seed):
     def make(embed_dim):
         kind = mcfg["name"]
         common = dict(n_layers=mcfg["n_layers"], dropout=mcfg["dropout"])
-        if kind == "wat":
+        if kind == "wat_main":
+            backbone = MainBackbone(vocab, embed_dim, max_len=max_len, **common,
+                                    **{k: mcfg[k] for k in ("mem", "ptr") if k in mcfg})
+        elif kind == "wat":
             backbone = WATBackboneX(vocab, embed_dim, chunk_size=mcfg["chunk_size"],
                                     max_len=max_len, ctx_mode=mcfg["ctx_mode"],
                                     intra=mcfg["intra"], **common,

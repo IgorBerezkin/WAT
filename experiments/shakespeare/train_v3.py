@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-from wat.models.wat_v3 import WATModel
+from wat.history.paper.wat_v3 import WATModel
 
 np.random.seed(42)
 torch.manual_seed(42)

@@ -3,8 +3,10 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-from wat.lab import (WATBackboneX, TransformerBackbone, LMModel, make_copy,
-                     evaluate)
+from wat.baselines import TransformerBackbone
+from wat.common import LMModel
+from wat.data import make_copy
+from wat.history.lab import WATBackboneX, evaluate
 from wat_anatomy import gradient_snr, grad_groups_wat, grad_groups_tr
 
 torch.manual_seed(42)

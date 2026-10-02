@@ -5,12 +5,13 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-from wat import lab
-from wat.lab import (CLSModel, CLSRootModel, LMDataset, LMModel, LSTMBackbone,
-                     PaddedCLSDataset, TransformerBackbone, VARIANTS,
-                     WATBackboneX, autocast_ctx, causality_probe,
-                     make_brackets2, make_copy, make_depth, make_listops,
-                     make_recall, match_embed_dim, n_params, train_model)
+from wat.history import lab
+from wat.baselines import LSTMBackbone, TransformerBackbone
+from wat.common import LMModel, match_embed_dim, n_params
+from wat.data import make_copy, make_recall
+from wat.history.lab import (CLSModel, CLSRootModel, LMDataset, PaddedCLSDataset, VARIANTS,
+                             WATBackboneX, autocast_ctx, causality_probe, make_brackets2,
+                             make_depth, make_listops, train_model)
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")

@@ -5,8 +5,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-from wat.models.wat_deepstack import WATDeepStackV1, count_params, find_embed_dim, generate_text
-from wat.models.transformer_baseline import TransformerBaseline, find_embed_dim_transformer
+from wat.history.paper.wat_deepstack import (WATDeepStackV1, count_params, find_embed_dim,
+                                             generate_text)
+from wat.history.paper.transformer_baseline import TransformerBaseline, find_embed_dim_transformer
 
 warnings.filterwarnings("ignore", message="Mismatch dtype")
 

@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 
-from wat.lab import GLUMerge, WATBlockX, WATBackboneX
+from wat.common import GLUMerge
+from wat.history.lab import WATBlockX, WATBackboneX
 
 torch.manual_seed(42)
 D, K, TRIALS = 128, 32, 24

@@ -5,7 +5,9 @@ from torch.utils.data import DataLoader
 
 import wat_night as N
 import wat_night_x as X
-from wat.lab import make_copy, make_recall, LMDataset, LMModel
+from wat.common import LMModel
+from wat.data import make_copy, make_recall
+from wat.history.lab import LMDataset
 from wat_lab import load_shakespeare
 
 DEVICE = N.DEVICE
@@ -140,7 +142,7 @@ def smoke_x():
 
     def fn_aux():
         import types
-        from wat.lab import WATBlockX
+        from wat.history.lab import WATBlockX
         bb = X.make_backbone("x_aux_ctx", V, 512)
         blk = bb.layers[0]
         orig = WATBlockX._ctx_mean

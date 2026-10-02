@@ -4,8 +4,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-from wat.lab import (WATBackboneX, WATBlockX, CausalSelfAttention, LMModel,
-                     make_copy)
+from wat.baselines.transformer import CausalSelfAttention
+from wat.common import LMModel
+from wat.data import make_copy
+from wat.history.lab import WATBackboneX, WATBlockX
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 K0 = 32

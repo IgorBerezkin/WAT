@@ -5,7 +5,6 @@ import zipfile
 import numpy as np
 import torch
 
-from wat.lab import make_copy, make_recall
 
 SHAKESPEARE_URL = ("https://raw.githubusercontent.com/karpathy/char-rnn/"
                    "master/data/tinyshakespeare/input.txt")
@@ -140,3 +139,41 @@ def build_task(cfg):
         x, y, vocab = make(cfg[f"n_{split}"], cfg["seq_len"], cfg[size_key], cfg["data_seed"] + offset)
         splits[split] = (x, y)
     return SequenceTask(splits, vocab)
+
+
+def make_copy(n, seq_len, n_mem, seed):
+    rng = np.random.RandomState(seed)
+    V_CONTENT, NOISE, MARK = 16, 16, 17
+    xs = np.full((n, seq_len), NOISE, dtype=np.int64)
+    ys = np.full((n, seq_len), -100, dtype=np.int64)
+    body = seq_len - n_mem
+    for i in range(n):
+        pos = np.sort(rng.choice(body, size=n_mem, replace=False))
+        toks = rng.randint(0, V_CONTENT, size=n_mem)
+        xs[i, pos] = toks
+        xs[i, body:] = MARK
+        ys[i, body:] = toks
+    return torch.from_numpy(xs), torch.from_numpy(ys), 18
+
+
+def make_recall(n, seq_len, n_pairs, seed):
+    rng = np.random.RandomState(seed)
+    N_KEYS, N_VALS = 16, 16
+    KEY0, VAL0 = 0, N_KEYS
+    NOISE, MARK = 32, 33
+    xs = np.full((n, seq_len), NOISE, dtype=np.int64)
+    ys = np.full((n, seq_len), -100, dtype=np.int64)
+    body = seq_len - 2
+    slots = np.arange(0, body - 1, 2)
+    for i in range(n):
+        keys = rng.permutation(N_KEYS)[:n_pairs]
+        vals = rng.randint(0, N_VALS, size=n_pairs)
+        pos = rng.choice(len(slots), size=n_pairs, replace=False)
+        for k, v, p in zip(keys, vals, slots[pos]):
+            xs[i, p] = KEY0 + k
+            xs[i, p + 1] = VAL0 + v
+        qi = rng.randint(0, n_pairs)
+        xs[i, body] = MARK
+        xs[i, body + 1] = KEY0 + keys[qi]
+        ys[i, body + 1] = VAL0 + vals[qi]
+    return torch.from_numpy(xs), torch.from_numpy(ys), 34

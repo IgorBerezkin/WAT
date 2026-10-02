@@ -3,8 +3,10 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-from wat.lab import (WATBackboneX, TransformerBackbone, LSTMBackbone, LMModel,
-                     make_copy, make_recall)
+from wat.baselines import TransformerBackbone, LSTMBackbone
+from wat.common import LMModel
+from wat.data import make_copy, make_recall
+from wat.history.lab import WATBackboneX
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ED, K = 96, 32

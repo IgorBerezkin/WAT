@@ -3,7 +3,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from wat.lab import WATBackboneX, TransformerBackbone, LMModel, make_copy
+from wat.baselines import TransformerBackbone
+from wat.common import LMModel
+from wat.data import make_copy
+from wat.history.lab import WATBackboneX
 
 torch.manual_seed(42)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
