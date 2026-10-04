@@ -96,10 +96,43 @@ def run_stage(spec_path, index):
     return codes
 
 
+def run_module(stage, index):
+    procs = []
+    groups = stage.get("groups") or [stage.get("args", [])]
+    for i, args in enumerate(groups):
+        worker_env = dict(env, CUDA_VISIBLE_DEVICES=str(i % gpus)) if gpus else env
+        log = open(os.path.join(logs_dir, f"stage{index}-gpu{i}.log"), "w")
+        out = os.path.join(output_dir, stage.get("out", "module"))
+        cmd = [sys.executable, "-m", stage["module"], *args,
+               "--out", os.path.join(out, f"g{i}") if len(groups) > 1 else out]
+        proc = subprocess.Popen(cmd, env=worker_env, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True, bufsize=1)
+        thread = threading.Thread(target=pump, args=(proc, log, f"gpu{i}"), daemon=True)
+        thread.start()
+        procs.append((proc, log, thread))
+    limit = stage.get("timeout_minutes")
+    deadline = time.time() + 60 * limit if limit else started + 3600 * HOURS
+    codes = []
+    for proc, log, thread in procs:
+        try:
+            codes.append(proc.wait(timeout=max(1.0, deadline - time.time())))
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            codes.append(proc.wait())
+            print(f"=== stage {index + 1}: module stopped after {limit} min", flush=True)
+        thread.join()
+        log.close()
+    return codes
+
+
 stages = SPEC if isinstance(SPEC, list) else [SPEC]
 stage_codes = []
 for index, stage in enumerate(stages):
     spec_path = os.path.join(output_dir, f"stage{index}.json")
+    if "module" in stage:
+        print(f"=== stage {index + 1}/{len(stages)} started", flush=True)
+        stage_codes.append(run_module(stage, index))
+        continue
     if "generator" in stage:
         module, func = stage["generator"].split(":")
         generate = (f"import importlib, json; spec = getattr(importlib.import_module({module!r}), "
@@ -111,10 +144,12 @@ for index, stage in enumerate(stages):
             json.dump(stage, f, indent=1)
     print(f"=== stage {index + 1}/{len(stages)} started", flush=True)
     stage_codes.append(run_stage(spec_path, index))
-subprocess.run([sys.executable, "-m", "wat.report", runs_dir, "--out",
-                os.path.join(output_dir, "summary.md")], env=env)
+if any("module" not in stage for stage in stages):
+    subprocess.run([sys.executable, "-m", "wat.report", runs_dir, "--out",
+                    os.path.join(output_dir, "summary.md")], env=env)
 with open(os.path.join(output_dir, "job.json"), "w") as f:
     json.dump({"commit": COMMIT, "workers": workers, "exit_codes": stage_codes,
+               "stage_procs": [len(s.get("groups") or [1]) if "module" in s else workers for s in stages],
                "hours": round((time.time() - started) / 3600, 2),
                "gpus": [torch.cuda.get_device_name(i) for i in range(gpus)]}, f, indent=1)
 print("=== JOB FINISHED ===", flush=True)
@@ -181,6 +216,8 @@ def stages_of(spec):
 def prefetch(spec):
     names = set()
     for stage in stages_of(spec):
+        if "module" in stage:
+            continue
         if "generator" in stage:
             names.update(stage.get("prefetch", []))
         else:
@@ -252,8 +289,8 @@ def main(argv=None):
         with open(args.spec, encoding="utf-8") as f:
             spec = json.load(f)
         stages = stages_of(spec)
-        n_runs = sum(len(expand(s)) for s in stages if "generator" not in s)
-        generated = sum("generator" in s for s in stages)
+        n_runs = sum(len(expand(s)) for s in stages if "generator" not in s and "module" not in s)
+        generated = sum("generator" in s or "module" in s for s in stages)
         if args.code == "commit":
             label, code = resolve_commit(args.commit), None
         else:
@@ -262,7 +299,7 @@ def main(argv=None):
         user = username(args.user)
         kernel_dir = build(spec, label, code, user, args.slug, MACHINES[args.machine],
                            args.hours, args.build_dir)
-        extra = f" + {generated} generated stage(s)" if generated else ""
+        extra = f" + {generated} generated or module stage(s)" if generated else ""
         print(f"{user}/{args.slug}: {n_runs} runs{extra}, code {label[:7]}"
               f"{label[40:] if code else ''}, machine {args.machine}, files in {kernel_dir}",
               flush=True)

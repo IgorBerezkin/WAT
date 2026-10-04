@@ -79,7 +79,7 @@ def build_model(mcfg, vocab, max_len, seed):
         common = dict(n_layers=mcfg["n_layers"], dropout=mcfg["dropout"])
         if kind == "wat_main":
             backbone = MainBackbone(vocab, embed_dim, max_len=max_len, **common,
-                                    **{k: mcfg[k] for k in ("mem", "ptr") if k in mcfg})
+                                    **{k: mcfg[k] for k in ("mem", "ptr", "fused_beam", "fused_read") if k in mcfg})
         elif kind == "wat":
             backbone = WATBackboneX(vocab, embed_dim, chunk_size=mcfg["chunk_size"],
                                     max_len=max_len, ctx_mode=mcfg["ctx_mode"],
@@ -174,7 +174,7 @@ def environment(device):
 
 
 def atomic_json(path, payload):
-    tmp = path + ".tmp"
+    tmp = f"{path}.{os.getpid()}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=1)
     os.replace(tmp, path)

@@ -7,9 +7,9 @@ from wat.common import CausalConv1d, GLUMerge, RMSNorm, match_pointers
 
 
 class TreeSearch(nn.Module):
-    def __init__(self, d, mode="beam8", heads=4):
+    def __init__(self, d, mode="beam8", heads=4, fused=False):
         super().__init__()
-        self.mode, self.heads = mode, heads
+        self.mode, self.heads, self.fused = mode, heads, fused
         self.norm = RMSNorm(d)
         self.W_q = nn.Linear(d, d)
         self.W_k = nn.Linear(d, d)
@@ -37,7 +37,12 @@ class TreeSearch(nn.Module):
         if self.mode == "search":
             return torch.utils.checkpoint.checkpoint(self._search, q, k, u_next, use_reentrant=False)
         half = torch.float16 if q.is_cuda else q.dtype
-        return self._beam(q.to(half), k.to(half), u_next.to(half), int(self.mode[4:] or 8)).float()
+        width = int(self.mode[4:] or 8)
+        if self.fused and q.is_cuda:
+            from wat.kernels import beam
+            if beam.available():
+                return beam.fused_beam(self, q.to(half), k.to(half), u_next.to(half), width)
+        return self._beam(q.to(half), k.to(half), u_next.to(half), width).float()
 
     def _search(self, q, k, u_next):
         B, H, T, _ = q.shape
@@ -126,8 +131,9 @@ class TreeSearch(nn.Module):
 
 
 class MainBlock(nn.Module):
-    def __init__(self, d, max_len=2048, mem="beam8"):
+    def __init__(self, d, max_len=2048, mem="beam8", fused_beam=False, fused_read=False):
         super().__init__()
+        self.fused_read = fused_read
         levels = (max_len - 1).bit_length()
         self.conv = CausalConv1d(d, 3)
         self.W_gate = nn.Linear(d, d)
@@ -140,7 +146,7 @@ class MainBlock(nn.Module):
         self.W_read = nn.Linear(d, d)
         self.level_emb = nn.Parameter(torch.zeros(levels, d))
         self.ctx_norm_m = RMSNorm(d)
-        self.memory = TreeSearch(d, mem) if mem else None
+        self.memory = TreeSearch(d, mem, fused=fused_beam) if mem else None
 
     def tree(self, x):
         levels = [x]
@@ -151,6 +157,10 @@ class MainBlock(nn.Module):
         return levels
 
     def read(self, levels, x):
+        if self.fused_read and x.is_cuda:
+            from wat.kernels import read
+            if read.available():
+                return read.fused_read(self, levels, x)
         q = self.W_read(x)
         out = torch.zeros_like(levels[0])
         for level in range(len(levels) - 1):
@@ -176,14 +186,14 @@ class MainBlock(nn.Module):
 
 class MainBackbone(nn.Module):
     def __init__(self, vocab_size, embed_dim, n_layers=3, max_len=2048, dropout=0.0, mem="beam8",
-                 ptr=(4, 8, 16, 32), **kw):
+                 ptr=(4, 8, 16, 32), fused_beam=False, fused_read=False, **kw):
         super().__init__()
         self.embed_dim, self.vocab = embed_dim, vocab_size
         self.embedding = nn.Embedding(vocab_size, embed_dim)
         self.ptr = sorted(ptr) if ptr else []
         self.ptr_emb = nn.ModuleList([nn.Embedding(vocab_size + 1, embed_dim) for _ in self.ptr])
         self.input_dropout = nn.Dropout(dropout)
-        self.layers = nn.ModuleList([MainBlock(embed_dim, max_len, mem) for _ in range(n_layers)])
+        self.layers = nn.ModuleList([MainBlock(embed_dim, max_len, mem, fused_beam, fused_read) for _ in range(n_layers)])
         self.layer_dropout = nn.Dropout(dropout)
         self.output_norm = RMSNorm(embed_dim)
         scale = 0.02 / (2 * max(1, n_layers)) ** 0.5
