@@ -1056,7 +1056,82 @@ def calibrate(ctx):
     return out
 
 
-TESTS = {"A": test_a, "B": test_b, "C": test_c, "D": test_d, "E": test_e}
+def scale_case(ctx, D, T):
+    B = max(1, ctx.tokens // T)
+    g = torch.Generator().manual_seed(0)
+    x = (torch.randn(B, T, D, generator=g) * 0.5).to(ctx.device).requires_grad_()
+    wat = MainBlock(D, max_len=T, mem="beam8", fused_beam=True, fused_read=True).to(ctx.device)
+    wat.memory = TreeSearch(D, "beam8", heads=max(1, D // 64), fused=True).to(ctx.device)
+    hd = 128 if D % 128 == 0 else 64
+    norm1, attn = RMSNorm(D).to(ctx.device), CausalSelfAttention(D, D // hd, 0.0, T, rope=True, sdpa=True).to(ctx.device)
+    norm2, ffn = RMSNorm(D).to(ctx.device), SwiGLU(D).to(ctx.device)
+
+    def tf(z):
+        z = z + attn(norm1(z))
+        return z + ffn(norm2(z))
+
+    rec = {"D": D, "T": T, "B": B, "tokens": B * T, "wat_heads": max(1, D // 64), "tf_heads": D // hd,
+           "wat_params": sum(p.numel() for p in wat.parameters()),
+           "tf_params": sum(p.numel() for m in (norm1, attn, norm2, ffn) for p in m.parameters()),
+           "sdpa_backend": sdpa_backend(ctx, B, D // hd, T, hd), "t": [round(time.time(), 2)]}
+    for name, fn, params in (("tf", tf, [p for m in (norm1, attn, norm2, ffn) for p in m.parameters()]),
+                             ("wat", wat, list(wat.parameters()))):
+        try:
+            with torch.no_grad(), ctx.amp():
+                grad = torch.randn_like(fn(x).float())
+
+            def fwd():
+                with torch.no_grad(), ctx.amp():
+                    fn(x)
+
+            def fwdbwd():
+                x.grad = None
+                for p in params:
+                    p.grad = None
+                with ctx.amp():
+                    out = fn(x)
+                out.float().backward(grad)
+
+            if ctx.cuda:
+                torch.cuda.reset_peak_memory_stats(ctx.device)
+            rec[f"{name}_fwd_ms"] = throughput(ctx, fwd, warmup=2, iters=2)
+            rec[f"{name}_fwdbwd_ms"] = throughput(ctx, fwdbwd, warmup=2, iters=2)
+            if ctx.cuda:
+                rec[f"{name}_peak_mb"] = round(torch.cuda.max_memory_allocated(ctx.device) / 2 ** 20, 1)
+        except Exception:
+            rec[f"{name}_error"] = error_text()
+        ctx.free()
+    if "tf_fwdbwd_ms" in rec and "wat_fwdbwd_ms" in rec:
+        rec["wat_over_tf_block"] = round(rec["wat_fwdbwd_ms"] / rec["tf_fwdbwd_ms"], 3)
+        rec["wat_over_tf_equal_params"] = round(rec["wat_fwdbwd_ms"] / (rec["tf_fwdbwd_ms"] * rec["wat_params"] / rec["tf_params"]), 3)
+    rec["t"].append(round(time.time(), 2))
+    return rec
+
+
+def test_s(ctx):
+    widths = (64,) if ctx.quick else (512, 1024, 2048)
+    lengths = (128,) if ctx.quick else (2048, 8192, 32768)
+    records = []
+    for D in widths:
+        for T in lengths:
+            if ctx.left() < 60:
+                records.append({"D": D, "T": T, "skipped": "time"})
+                save(ctx, "S", {"semantics": SEMANTICS, "records": records})
+                continue
+            try:
+                rec = scale_case(ctx, D, T)
+            except Exception:
+                rec = {"D": D, "T": T, "error": error_text()}
+            records.append(rec)
+            ctx.free()
+            save(ctx, "S", {"semantics": SEMANTICS, "records": records})
+            print(f"[S] D={D} T={T}: tf {rec.get('tf_fwdbwd_ms')} ms, wat {rec.get('wat_fwdbwd_ms')} ms, "
+                  f"block ratio {rec.get('wat_over_tf_block')}, equal-params ratio {rec.get('wat_over_tf_equal_params')}, "
+                  f"sdpa {rec.get('sdpa_backend')}{' ERROR' if 'error' in rec or 'tf_error' in rec or 'wat_error' in rec else ''}", flush=True)
+    return records
+
+
+TESTS = {"A": test_a, "B": test_b, "C": test_c, "D": test_d, "E": test_e, "S": test_s}
 
 
 def gpu_clocks():

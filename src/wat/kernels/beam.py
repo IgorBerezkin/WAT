@@ -195,7 +195,8 @@ BLOCK_T = None
 def _blocks(DP):
     if BLOCK_T:
         return BLOCK_T, BLOCK_T
-    return (32, 32) if DP <= 32 else (16, 16)
+    bt = 32 if DP <= 32 else 16 if DP <= 64 else 8 if DP <= 128 else 4
+    return bt, bt
 
 
 def _pad(x, width):
@@ -280,7 +281,7 @@ def _inputs(B, H, T, DH, device, seed):
 def check(device="cuda", width=8):
     from wat.main.model import TreeSearch
     records = []
-    for B, H, T, DH in ((2, 4, 16, 8), (2, 4, 100, 26), (4, 4, 512, 26), (2, 4, 2048, 42), (1, 4, 8192, 26), (2, 2, 300, 64)):
+    for B, H, T, DH in ((2, 4, 16, 8), (2, 4, 100, 26), (4, 4, 512, 26), (2, 4, 2048, 42), (1, 4, 8192, 26), (2, 2, 300, 64), (2, 4, 512, 98)):
         rec = {"shape": [B, H, T, DH]}
         try:
             mem = TreeSearch(DH * H, "beam%d" % width, heads=H).to(device)
