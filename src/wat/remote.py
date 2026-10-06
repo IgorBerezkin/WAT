@@ -222,7 +222,7 @@ def prefetch(spec):
             names.update(stage.get("prefetch", []))
         else:
             names.update(resolve(cfg)["task"]["name"] for cfg in expand(stage))
-    return sorted(names & {"shakespeare", "enwik8"})
+    return sorted(names & {"shakespeare", "enwik8", "ru_alpaca"})
 
 
 def build(spec, label, code, user, slug, machine, hours, root):

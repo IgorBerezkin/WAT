@@ -1,4 +1,8 @@
+import io
+import json
 import os
+import subprocess
+import sys
 import urllib.request
 import zipfile
 
@@ -9,10 +13,14 @@ import torch
 SHAKESPEARE_URL = ("https://raw.githubusercontent.com/karpathy/char-rnn/"
                    "master/data/tinyshakespeare/input.txt")
 ENWIK8_URL = "http://mattmahoney.net/dc/enwik8.zip"
+RU_ALPACA_URL = ("https://huggingface.co/datasets/IlyaGusev/ru_turbo_alpaca/resolve/main/"
+                 "ru_turbo_alpaca.jsonl.zst")
+USER, BOT, END = 1, 2, 3
 
 TASK_DEFAULTS = {
     "shakespeare": {"split": "full", "seq_len": 512},
     "enwik8": {"seq_len": 512},
+    "ru_alpaca": {"seq_len": 1024},
     "copy": {"seq_len": 512, "n_mem": 16, "n_train": 6000, "n_val": 1000, "n_test": 1000,
              "data_seed": 42},
     "recall": {"seq_len": 256, "n_pairs": 12, "n_train": 6000, "n_val": 1000, "n_test": 1000,
@@ -60,6 +68,46 @@ def read_enwik8(root=None):
     return np.fromfile(path, dtype=np.uint8), 256
 
 
+def chat_bytes(question, answer=None):
+    text = bytes([USER]) + question.strip().encode("utf-8") + bytes([BOT])
+    if answer is not None:
+        text += answer.strip().encode("utf-8") + bytes([END]) + b"\n"
+    return text
+
+
+def unzstd(payload):
+    try:
+        import zstandard
+    except ImportError:
+        subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "zstandard"], check=True)
+        import zstandard
+    with zstandard.ZstdDecompressor().stream_reader(io.BytesIO(payload)) as reader:
+        return reader.read()
+
+
+def read_ru_alpaca(root=None):
+    root = root or data_root()
+    path = os.path.join(root, "ru_alpaca.bin")
+    if not os.path.exists(path):
+        os.makedirs(root, exist_ok=True)
+        with urllib.request.urlopen(RU_ALPACA_URL) as response:
+            rows = [json.loads(line) for line in unzstd(response.read()).decode("utf-8").splitlines() if line.strip()]
+        order = np.random.default_rng(0).permutation(len(rows))
+        parts = []
+        for i in order:
+            row = rows[i]
+            question = row["instruction"].strip()
+            if (row.get("input") or "").strip():
+                question += "\n" + row["input"].strip()
+            if row.get("output"):
+                parts.append(chat_bytes(question, row["output"]))
+        tmp = f"{path}.{os.getpid()}.tmp"
+        with open(tmp, "wb") as f:
+            f.write(b"".join(parts))
+        os.replace(tmp, path)
+    return np.fromfile(path, dtype=np.uint8), 256
+
+
 def enwik8_splits(data):
     return {"train": data[:90_000_000], "val": data[90_000_000:95_000_000],
             "test": data[95_000_000:100_000_000]}
@@ -69,6 +117,10 @@ def lm_splits(cfg):
     if cfg["name"] == "shakespeare":
         data, vocab = read_shakespeare()
         return shakespeare_splits(data, cfg["split"]), vocab
+    if cfg["name"] == "ru_alpaca":
+        data, vocab = read_ru_alpaca()
+        a, b = int(len(data) * 0.96), int(len(data) * 0.98)
+        return {"train": data[:a], "val": data[a:b], "test": data[b:]}, vocab
     data, vocab = read_enwik8()
     return enwik8_splits(data), vocab
 
@@ -129,7 +181,7 @@ class SequenceTask:
 
 def build_task(cfg):
     cfg = resolve_task(cfg)
-    if cfg["name"] in ("shakespeare", "enwik8"):
+    if cfg["name"] in ("shakespeare", "enwik8", "ru_alpaca"):
         splits, vocab = lm_splits(cfg)
         return LMTask(splits, vocab, cfg["seq_len"])
     make = make_copy if cfg["name"] == "copy" else make_recall
